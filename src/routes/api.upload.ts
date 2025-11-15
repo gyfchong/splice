@@ -50,9 +50,9 @@ export const Route = createFileRoute("/api/upload")({
 								const buffer = Buffer.from(arrayBuffer);
 								parseResult = await parsePDF(buffer);
 							} else {
-								// Parse CSV as text
+								// Parse CSV as text, passing filename for date extraction
 								const text = await file.text();
-								parseResult = await parseCSV(text);
+								parseResult = await parseCSV(text, file.name);
 							}
 
 							if (parseResult.status === "error") {
