@@ -1,4 +1,4 @@
-import pdf from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 export interface ParsedExpense {
 	expenseId: string;
@@ -174,7 +174,8 @@ function extractExpenses(text: string): ParsedExpense[] {
  */
 export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
 	try {
-		const data = await pdf(buffer);
+		const pdf = new PDFParse(buffer);
+		const data = await pdf.getText();
 		const expenses = extractExpenses(data.text);
 
 		if (expenses.length === 0) {
