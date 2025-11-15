@@ -8,9 +8,9 @@ import {
 	TrendingUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 
-export const Route = createFileRoute("/year/$year")({
+export const Route = createFileRoute("/$year")({
 	component: YearPage,
 });
 
@@ -42,17 +42,17 @@ function YearPage() {
 	const data = useQuery(
 		api.expenses.getYearSummary,
 		sessionStartTime !== null ? { year: yearNum, sessionStartTime } : "skip",
-	);
+	)
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
 			currency: "USD",
 		}).format(amount);
-	};
+	}
 
 	return (
-		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
 			<div className="max-w-6xl mx-auto">
 				{/* Header */}
 				<div className="mb-8">
@@ -156,8 +156,8 @@ function YearPage() {
 								return (
 									<Link
 										key={month.monthNumber}
-										to="/year/$year/month/$month"
-										params={{ year, month: month.monthNumber }}
+										to="/m/$yearMonth"
+										params={{ yearMonth: `${year}-${month.monthNumber}` }}
 										className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 hover:border-cyan-500 rounded-xl p-6 transition-all group relative"
 									>
 										{/* Green Dot Indicator */}
@@ -191,12 +191,12 @@ function YearPage() {
 											{month.numberOfExpenses === 1 ? "expense" : "expenses"}
 										</div>
 									</Link>
-								);
+								)
 							})}
 						</div>
 					</>
 				)}
 			</div>
 		</div>
-	);
+	)
 }

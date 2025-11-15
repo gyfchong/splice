@@ -259,7 +259,7 @@ function HomePage() {
 							{years.map((year) => (
 								<Link
 									key={year}
-									to="/year/$year"
+									to="/$year"
 									params={{ year: year.toString() }}
 									className="bg-slate-700/50 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500 rounded-lg p-6 text-center transition-all group"
 								>

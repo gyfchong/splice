@@ -2,19 +2,20 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Calendar, ChevronLeft } from "lucide-react";
 import { useEffect } from "react";
-import { api } from "../../../../../convex/_generated/api";
+import { api } from "../../../convex/_generated/api";
 
-export const Route = createFileRoute("/year/$year/month/$month")({
+export const Route = createFileRoute("/m/$yearMonth")({
 	component: MonthPage,
 });
 
 function MonthPage() {
-	const { year, month } = Route.useParams();
+	const { yearMonth } = Route.useParams();
+	const [year, month] = yearMonth.split("-");
 	const yearNum = Number.parseInt(year, 10);
 	const data = useQuery(api.expenses.getMonthExpenses, {
 		year: yearNum,
 		month,
-	});
+	})
 	const toggleExpense = useMutation(api.expenses.toggleExpense);
 
 	// Mark this month as visited when component mounts
@@ -22,7 +23,7 @@ function MonthPage() {
 		const visitedMonthsKey = `visitedMonths_${year}`;
 		const visitedMonths = JSON.parse(
 			localStorage.getItem(visitedMonthsKey) || "[]",
-		);
+		)
 		if (!visitedMonths.includes(month)) {
 			visitedMonths.push(month);
 			localStorage.setItem(visitedMonthsKey, JSON.stringify(visitedMonths));
@@ -35,14 +36,14 @@ function MonthPage() {
 		} catch (error) {
 			console.error("Failed to toggle expense:", error);
 		}
-	};
+	}
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
 			currency: "USD",
 		}).format(amount);
-	};
+	}
 
 	const formatDate = (dateStr: string) => {
 		const date = new Date(dateStr);
@@ -50,7 +51,7 @@ function MonthPage() {
 			month: "short",
 			day: "numeric",
 		}).format(date);
-	};
+	}
 
 	const getMonthName = (monthNum: string) => {
 		const monthNames = [
@@ -66,17 +67,17 @@ function MonthPage() {
 			"October",
 			"November",
 			"December",
-		];
+		]
 		return monthNames[Number.parseInt(monthNum, 10) - 1];
-	};
+	}
 
 	return (
-		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
 			<div className="max-w-6xl mx-auto">
 				{/* Header */}
 				<div className="mb-8">
 					<Link
-						to="/year/$year"
+						to="/$year"
 						params={{ year }}
 						className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-4"
 					>
@@ -149,5 +150,5 @@ function MonthPage() {
 				)}
 			</div>
 		</div>
-	);
+	)
 }
