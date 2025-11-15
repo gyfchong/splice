@@ -12,6 +12,8 @@ export default defineSchema({
 		year: v.number(),
 		month: v.string(), // 2-digit format: "01", "02", etc.
 		uploadTimestamp: v.optional(v.number()), // When expense was added (for unseen tracking)
+		category: v.optional(v.string()), // Expense category (e.g., "Other", "Groceries", etc.)
+		merchantName: v.optional(v.string()), // Merchant/vendor name
 	}).index("by_expense_id", ["expenseId"]),
 	uploads: defineTable({
 		filename: v.string(),
