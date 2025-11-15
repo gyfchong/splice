@@ -4,35 +4,46 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 ## Project Overview
 
-**Splice** is a full-stack React application built with TanStack Start, featuring server-side rendering, type-safe server functions, and modern React patterns. It serves as a showcase for TanStack ecosystem integration including Router, Query, Form, and Convex backend.
+**Splice** is a full-stack React expense tracking application built with TanStack Start, featuring server-side rendering, type-safe server functions, and modern React patterns. The application allows users to upload bank statements (PDF format), automatically parse transactions, and track expenses by year and month. It showcases TanStack ecosystem integration including Router, Query, Form, and Convex backend for real-time data synchronization.
 
 ### Tech Stack
 
-- **Framework**: TanStack Start (full-stack React framework)
+- **Framework**: TanStack Start 1.136.4 (full-stack React framework)
 - **Runtime**: React 19.2.0
-- **Language**: TypeScript 5.7.2
-- **Build Tool**: Vite 7.1.7
-- **Routing**: TanStack Router 1.132.0 (file-based)
-- **Data Fetching**: TanStack Query 5.66.5
-- **Forms**: TanStack Form 1.0.0
-- **Backend**: Convex 1.27.3
-- **Styling**: Tailwind CSS 4.0.6
+- **Language**: TypeScript 5.9.3
+- **Build Tool**: Vite 7.2.2
+- **Routing**: TanStack Router 1.136.4 (file-based)
+- **Data Fetching**: TanStack Query 5.90.9
+- **Forms**: TanStack Form 1.25.0
+- **Backend**: Convex 1.29.1
+- **Styling**: Tailwind CSS 4.1.17
 - **UI Components**: Shadcn/UI (Radix UI primitives)
-- **Icons**: Lucide React 0.544.0
-- **Linting/Formatting**: Biome 2.2.4
-- **Testing**: Vitest 3.0.5
-- **Validation**: Zod 4.1.11
+- **Icons**: Lucide React 0.553.0
+- **Linting/Formatting**: Biome 2.3.5
+- **Testing**: Vitest 4.0.9
+- **Validation**: Zod 4.1.12
+- **PDF Parsing**: pdf-parse 2.4.5
+- **Utilities**: clsx 2.1.1, tailwind-merge 3.4.0, class-variance-authority 0.7.1
+- **Animations**: tw-animate-css 1.4.0
 - **Deployment**: Netlify
 - **Package Manager**: pnpm
+
+### Additional Dev Dependencies
+
+- **Types**: @types/node 24.10.1, @types/pdf-parse 1.1.5
+- **Performance**: web-vitals 5.1.0
 
 ## Directory Structure
 
 ```
-/home/user/splice/
+/home/gyfchong/Code/splice/
 ├── convex/                    # Backend code (Convex)
 │   ├── _generated/           # Auto-generated Convex files
 │   ├── schema.ts             # Database schema definitions
-│   └── todos.ts              # Example Convex functions
+│   ├── expenses.ts           # Expense-related Convex functions
+│   └── tsconfig.json         # TypeScript config for Convex
+├── example/                   # Example files for testing
+│   └── 0513-20250919-statement.pdf # Sample bank statement
 ├── public/                   # Static assets
 │   └── manifest.json         # PWA manifest
 ├── src/
@@ -45,13 +56,8 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   │   │   ├── slider.tsx
 │   │   │   ├── switch.tsx
 │   │   │   └── textarea.tsx
-│   │   ├── Header.tsx       # Main navigation header
-│   │   └── demo.FormComponents.tsx
-│   ├── data/                # Static data/constants
-│   │   └── demo.punk-songs.ts
-│   ├── hooks/               # Custom React hooks
-│   │   ├── demo.form.ts
-│   │   └── demo.form-context.ts
+│   │   └── Header.tsx       # Main navigation header
+│   ├── data/                # Static data/constants (currently empty)
 │   ├── integrations/        # Third-party integrations
 │   │   ├── convex/
 │   │   │   └── provider.tsx # Convex provider wrapper
@@ -59,18 +65,19 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   │       ├── root-provider.tsx
 │   │       └── devtools.tsx
 │   ├── lib/                 # Utility functions
-│   │   └── utils.ts         # cn() helper for Tailwind
+│   │   ├── utils.ts         # cn() helper for Tailwind
+│   │   └── pdf-parser.ts    # PDF bank statement parser
 │   ├── routes/              # File-based routes
-│   │   ├── demo/            # Demo routes (can be deleted)
-│   │   │   ├── api.*.ts     # API route handlers
-│   │   │   ├── convex.tsx
-│   │   │   ├── form.*.tsx
-│   │   │   ├── start.*.tsx
-│   │   │   └── tanstack-query.tsx
+│   │   ├── year/
+│   │   │   └── $year.tsx    # Dynamic year route for expenses
 │   │   ├── __root.tsx       # Root layout component
-│   │   └── index.tsx        # Home page
+│   │   ├── index.tsx        # Home page with upload
+│   │   └── api.upload.ts    # File upload API endpoint
 │   ├── router.tsx           # Router configuration
-│   └── styles.css           # Global styles (Tailwind)
+│   ├── routeTree.gen.ts     # Auto-generated route tree
+│   ├── styles.css           # Global styles (Tailwind)
+│   └── logo.svg             # App logo
+├── .vscode/                 # VS Code settings
 ├── biome.json              # Biome configuration
 ├── components.json         # Shadcn configuration
 ├── netlify.toml            # Netlify deployment config
@@ -83,10 +90,11 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 ### Formatting Rules (Biome)
 
-- **Indentation**: TABS (not spaces) - enforced by biome.json:19
+- **Indentation**: TABS (not spaces) - enforced by biome.json:21
 - **Quotes**: Double quotes for JavaScript/TypeScript - biome.json:32
 - **Import Organization**: Auto-organized imports enabled - biome.json:23
 - **Formatter**: Biome (not Prettier)
+- **File Includes**: Configured to format src/, .vscode/, index.html, and vite.config.js
 
 ### TypeScript Configuration
 
@@ -98,19 +106,27 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 ### Naming Conventions
 
-- **Demo Files**: Prefix with `demo.` - these can be safely deleted
-- **Components**: PascalCase (e.g., `Header.tsx`, `SimpleForm`)
-- **Utilities**: camelCase (e.g., `utils.ts`)
-- **Routes**: kebab-case or dot-notation (e.g., `form.simple.tsx`)
+- **Components**: PascalCase (e.g., `Header.tsx`)
+- **Utilities**: kebab-case (e.g., `pdf-parser.ts`, `utils.ts`)
+- **Routes**: kebab-case or dynamic parameters with $ prefix (e.g., `$year.tsx`)
+- **API Routes**: Prefix with `api.` (e.g., `api.upload.ts`)
 
 ### File Organization
 
 1. Routes go in `src/routes/` (file-based routing)
+   - API routes: Prefix with `api.` (e.g., `api.upload.ts`)
+   - Dynamic routes: Use `$` prefix for parameters (e.g., `$year.tsx`)
 2. Reusable components in `src/components/`
-3. UI primitives in `src/components/ui/`
-4. Custom hooks in `src/hooks/`
-5. Utilities in `src/lib/`
-6. Integration wrappers in `src/integrations/`
+3. UI primitives in `src/components/ui/` (Shadcn components)
+4. Utilities in `src/lib/`
+   - `utils.ts` - Tailwind helper functions
+   - `pdf-parser.ts` - Bank statement PDF parsing
+5. Integration wrappers in `src/integrations/`
+   - `convex/` - Convex backend provider
+   - `tanstack-query/` - Query client setup
+6. Static assets in `public/`
+7. Example files in `example/` (for testing, not deployed)
+8. Convex backend in `convex/` (separate from src/)
 
 ## Routing System
 
@@ -118,9 +134,9 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 Routes are automatically generated from files in `src/routes/`:
 
-- `index.tsx` → `/`
-- `about.tsx` → `/about`
-- `demo/form.simple.tsx` → `/demo/form/simple`
+- `index.tsx` → `/` (home page with PDF upload)
+- `year/$year.tsx` → `/year/2024` (dynamic year route for expenses)
+- `api.upload.ts` → `/api/upload` (file upload endpoint)
 - `__root.tsx` → Layout wrapper for all routes
 
 ### Route File Structure
@@ -158,9 +174,13 @@ Use `<Link>` component from TanStack Router:
 ```typescript
 import { Link } from '@tanstack/react-router'
 
-<Link to="/about">About</Link>
-<Link to="/demo/form/simple" activeProps={{ className: 'active' }}>
-  Form Demo
+<Link to="/">Home</Link>
+<Link to="/year/2024" activeProps={{ className: 'active' }}>
+  2024 Expenses
+</Link>
+// Dynamic year parameter
+<Link to="/year/$year" params={{ year: '2025' }}>
+  2025 Expenses
 </Link>
 ```
 
@@ -210,56 +230,85 @@ function Products() {
 Convex is configured for real-time backend. Provider is in `src/integrations/convex/provider.tsx`.
 
 **Schema** (convex/schema.ts):
-- `products`: title (string), imageId (string), price (number)
-- `todos`: text (string), completed (boolean)
+- `expenses`:
+  - `expenseId` (string) - Unique ID for deduplication
+  - `name` (string) - Expense description
+  - `amount` (number) - Transaction amount
+  - `date` (string) - Date in YYYY-MM-DD format
+  - `checked` (boolean) - User verification status
+  - `year` (number) - Year for filtering
+  - `month` (string) - Month in 2-digit format (01, 02, etc.)
+  - Index: `by_expense_id` on `expenseId`
+- `uploads`:
+  - `filename` (string) - Uploaded file name
+  - `size` (number) - File size in bytes
+  - `uploadDate` (number) - Timestamp
+  - `status` (string) - "success" or "error"
+  - `errorMessage` (optional string) - Error details if failed
 
 **Usage:**
 ```typescript
 import { useQuery } from 'convex/react'
 import { api } from '../convex/_generated/api'
 
-const todos = useQuery(api.todos.getTodos)
+const expenses = useQuery(api.expenses.getExpensesByYear, { year: 2024 })
 ```
 
 ## Form Management
 
+### File Upload Pattern
+
+The application uses standard HTML form uploads for PDF bank statements:
+
+```typescript
+// src/routes/api.upload.ts
+export async function POST({ request }: { request: Request }) {
+  const formData = await request.formData()
+  const file = formData.get('file') as File
+
+  if (!file || file.type !== 'application/pdf') {
+    return new Response(JSON.stringify({ error: 'Invalid file' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  // Process file...
+  return Response.json({ success: true, data: processedData })
+}
+```
+
 ### TanStack Form with Zod Validation
 
-Pattern from `src/routes/demo/form.simple.tsx`:
+For general form handling:
 
 ```typescript
 import { z } from 'zod'
-import { useAppForm } from '@/hooks/demo.form'
+import { useForm } from '@tanstack/react-form'
 
 const schema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().min(1, 'Description is required'),
+  name: z.string().min(1, 'Name is required'),
+  amount: z.number().positive('Amount must be positive'),
 })
 
-function MyForm() {
-  const form = useAppForm({
+function ExpenseForm() {
+  const form = useForm({
     defaultValues: {
-      title: '',
-      description: '',
+      name: '',
+      amount: 0,
     },
-    validators: {
-      onBlur: schema,
-    },
-    onSubmit: ({ value }) => {
+    onSubmit: async ({ value }) => {
       // Handle submission
+      console.log('Form submitted:', value)
     },
   })
 
   return (
     <form onSubmit={(e) => {
       e.preventDefault()
-      e.stopPropagation()
       form.handleSubmit()
     }}>
-      <form.AppField name="title">
-        {(field) => <field.TextField label="Title" />}
-      </form.AppField>
-      {/* More fields */}
+      {/* Form fields */}
     </form>
   )
 }
@@ -327,11 +376,14 @@ pnpm check      # Run both lint and format checks
 
 ### Testing
 
-- Framework: Vitest 3.0.5
-- Testing Library: @testing-library/react 16.2.0
-- DOM Environment: jsdom 27.0.0
+- Framework: Vitest 4.0.9
+- Testing Library: @testing-library/react 16.3.0
+- Testing Library DOM: @testing-library/dom 10.4.1
+- DOM Environment: jsdom 27.2.0
 
 Run tests: `pnpm test`
+
+Note: Test files should be placed alongside the code they test or in a `__tests__` directory.
 
 ### Building
 
@@ -350,7 +402,13 @@ Output directory: `dist/client` (netlify.toml:3)
 - **Dev Command**: `vite dev`
 - **Dev Port**: 3000
 
-Plugin: `@netlify/vite-plugin-tanstack-start` configured in vite.config.ts:12
+Plugins configured in vite.config.ts:
+- `@tanstack/devtools-vite` for TanStack devtools
+- `@netlify/vite-plugin-tanstack-start` for Netlify deployment
+- `vite-tsconfig-paths` for path alias support
+- `@tailwindcss/vite` for Tailwind CSS
+- `@tanstack/react-start/plugin/vite` for TanStack Start
+- `@vitejs/plugin-react` for React support
 
 ## Key Patterns & Best Practices
 
@@ -399,14 +457,23 @@ export const getData = createServerFn('GET', async () => {
 
 ### 4. API Routes
 
-API routes use `.ts` extension in routes folder:
+API routes use `.ts` extension with `api.` prefix in routes folder:
 
 ```typescript
-// src/routes/demo/api.names.ts
-export function GET() {
-  return Response.json({ names: ['Alice', 'Bob'] })
+// src/routes/api.upload.ts
+export async function POST({ request }: { request: Request }) {
+  const formData = await request.formData()
+  const file = formData.get('file') as File
+
+  // Process the file
+  const buffer = await file.arrayBuffer()
+  // Parse PDF and extract transactions
+
+  return Response.json({ success: true, transactions: parsedData })
 }
 ```
+
+API routes can export handlers for: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
 
 ### 5. Environment Variables
 
@@ -436,10 +503,42 @@ export const Route = createFileRoute('/path')({
 
 ### Adding a New Page
 
-1. Create file in `src/routes/`, e.g., `src/routes/about.tsx`
+1. Create file in `src/routes/`, e.g., `src/routes/reports.tsx`
 2. Export route using `createFileRoute()`
 3. Define component
 4. Add navigation link in `src/components/Header.tsx` if needed
+
+Example:
+```typescript
+// src/routes/reports.tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/reports')({
+  component: Reports,
+})
+
+function Reports() {
+  return <div>Reports Page</div>
+}
+```
+
+### Adding a Dynamic Route
+
+For routes with parameters (like the year route):
+
+```typescript
+// src/routes/year/$year.tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/year/$year')({
+  component: YearExpenses,
+})
+
+function YearExpenses() {
+  const { year } = Route.useParams()
+  return <div>Expenses for {year}</div>
+}
+```
 
 ### Adding a UI Component
 
@@ -448,35 +547,80 @@ pnpx shadcn@latest add button
 # Component added to src/components/ui/button.tsx
 ```
 
-### Adding a Custom Hook
-
-1. Create file in `src/hooks/`, e.g., `use-my-hook.ts`
-2. Export hook function
-3. Import with `@/hooks/use-my-hook`
+Available Shadcn components: button, input, label, select, slider, switch, textarea, and more.
 
 ### Creating an API Endpoint
 
-1. Create `.ts` file in `src/routes/`, e.g., `src/routes/api/users.ts`
-2. Export HTTP method handlers: `GET`, `POST`, `PUT`, `DELETE`
+1. Create `.ts` file with `api.` prefix in `src/routes/`, e.g., `src/routes/api.export.ts`
+2. Export HTTP method handlers: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
 3. Return `Response.json()` or `new Response()`
+
+Example:
+```typescript
+// src/routes/api.export.ts
+export async function GET() {
+  return Response.json({ data: 'exported data' })
+}
+```
 
 ### Setting up Convex Functions
 
 1. Define schema in `convex/schema.ts`
-2. Create function file in `convex/`, e.g., `convex/users.ts`
+2. Create function file in `convex/`, e.g., `convex/reports.ts`
 3. Use in components with `useQuery` or `useMutation` from `convex/react`
 
-## Demo Files
+Example:
+```typescript
+// convex/reports.ts
+import { query } from './_generated/server'
 
-Files prefixed with `demo.` or in `src/routes/demo/` are examples and can be safely deleted:
+export const getMonthlyReport = query({
+  args: { year: v.number(), month: v.string() },
+  handler: async (ctx, { year, month }) => {
+    return await ctx.db
+      .query('expenses')
+      .filter((q) => q.and(
+        q.eq(q.field('year'), year),
+        q.eq(q.field('month'), month)
+      ))
+      .collect()
+  },
+})
+```
 
-- `src/routes/demo/` (entire directory)
-- `src/hooks/demo.form.ts`
-- `src/hooks/demo.form-context.ts`
-- `src/data/demo.punk-songs.ts`
-- `src/components/demo.FormComponents.tsx`
+### Working with PDF Parser
 
-These demonstrate various TanStack Start features but are not essential to the application.
+The application includes a PDF parser in `src/lib/pdf-parser.ts` for extracting transactions from bank statements:
+
+```typescript
+import { parsePDF } from '@/lib/pdf-parser'
+
+const buffer = await file.arrayBuffer()
+const transactions = await parsePDF(Buffer.from(buffer))
+// Returns array of { date, description, amount }
+```
+
+## Application Features
+
+### Expense Tracking
+
+The application provides the following core features:
+
+1. **PDF Upload & Parsing**: Upload bank statements in PDF format (NAB bank format supported)
+2. **Automatic Transaction Extraction**: Automatically parse transactions with date, description, and amount
+3. **Year-Based Organization**: View expenses organized by year
+4. **Month Grouping**: Expenses are grouped by month within each year
+5. **Expense Verification**: Mark transactions as checked/verified
+6. **Real-Time Sync**: Changes sync in real-time via Convex
+
+### Supported Bank Statement Formats
+
+Currently supports NAB (National Australia Bank) statement format with:
+- Date formats: DD/MM/YY and DD/MM/YYYY
+- Transaction descriptions
+- Debit amounts (expenses tracked as positive numbers)
+
+Example file: `example/0513-20250919-statement.pdf`
 
 ## Important Notes for AI Assistants
 
@@ -502,6 +646,16 @@ These demonstrate various TanStack Start features but are not essential to the a
 2. **Leverage TanStack Query** for caching and deduplication
 3. **Code split** large components with dynamic imports
 4. **Optimize images** before adding to `/public`
+5. **Use Convex indexes** for efficient queries (e.g., `by_expense_id` index)
+6. **Handle large PDFs** efficiently by streaming when possible
+
+### Application-Specific Guidelines
+
+1. **PDF Processing**: Always validate PDF files before parsing
+2. **Transaction Deduplication**: Use `expenseId` to prevent duplicate entries
+3. **Date Handling**: Store dates in YYYY-MM-DD format for consistency
+4. **Error Handling**: Track upload errors in the `uploads` table for debugging
+5. **Year/Month Filtering**: Always filter by year first, then month for performance
 
 ### Debugging
 
@@ -523,6 +677,17 @@ These demonstrate various TanStack Start features but are not essential to the a
 
 ## Version Information
 
-Last updated: 2025-11-15
-Node version: Compatible with Vite 7.1.7 (Node 18+)
-Package manager: pnpm
+**Last updated**: 2025-11-15
+**Node version**: Compatible with Vite 7.2.2 (Node 18+)
+**Package manager**: pnpm
+**TypeScript**: 5.9.3
+**React**: 19.2.0
+**TanStack Start**: 1.136.4
+
+### Recent Changes
+
+- Removed all demo routes and components
+- Implemented expense tracking functionality
+- Added PDF parser for bank statements (NAB format)
+- Created year-based expense routing
+- Updated to latest dependency versions (Nov 2025)
