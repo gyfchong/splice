@@ -100,17 +100,6 @@ function HomePage() {
 							totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
 						}`,
 					});
-
-					// Navigate to the earliest new month if we added expenses
-					if (earliestNewMonth) {
-						const targetYear = earliestNewMonth.year;
-						setTimeout(() => {
-							navigate({
-								to: "/year/$year",
-								params: { year: targetYear.toString() },
-							});
-						}, 1500);
-					}
 				}
 			} catch (error) {
 				setUploadStatus({
@@ -140,13 +129,17 @@ function HomePage() {
 			setIsDragging(false);
 
 			const files = Array.from(e.dataTransfer.files).filter(
-				(file) => file.type === "application/pdf",
+				(file) =>
+					file.type === "application/pdf" ||
+					file.type === "text/csv" ||
+					file.type === "application/csv" ||
+					file.name.endsWith(".csv"),
 			);
 
 			if (files.length === 0) {
 				setUploadStatus({
 					type: "error",
-					message: "Please upload only PDF files",
+					message: "Please upload only PDF or CSV files",
 				});
 				return;
 			}
@@ -159,13 +152,17 @@ function HomePage() {
 	const handleFileInput = useCallback(
 		async (e: React.ChangeEvent<HTMLInputElement>) => {
 			const files = Array.from(e.target.files || []).filter(
-				(file) => file.type === "application/pdf",
+				(file) =>
+					file.type === "application/pdf" ||
+					file.type === "text/csv" ||
+					file.type === "application/csv" ||
+					file.name.endsWith(".csv"),
 			);
 
 			if (files.length === 0) {
 				setUploadStatus({
 					type: "error",
-					message: "Please upload only PDF files",
+					message: "Please upload only PDF or CSV files",
 				});
 				return;
 			}
@@ -182,7 +179,7 @@ function HomePage() {
 					Expense Splitter
 				</h1>
 				<p className="text-gray-400 text-center mb-12">
-					Upload PDF statements to track and split expenses 50/50
+					Upload PDF or CSV statements to track and split expenses 50/50
 				</p>
 
 				{/* Upload Area */}
@@ -205,10 +202,10 @@ function HomePage() {
 							}`}
 						/>
 						<h3 className="text-xl font-semibold text-white mb-2">
-							{isDragging ? "Drop PDF files here" : "Upload Expense PDFs"}
+							{isDragging ? "Drop files here" : "Upload Expense Files"}
 						</h3>
 						<p className="text-gray-400 mb-4">
-							Drag and drop PDF files or click to browse
+							Drag and drop PDF or CSV files or click to browse
 						</p>
 						<label
 							htmlFor="file-upload"
@@ -220,7 +217,7 @@ function HomePage() {
 							id="file-upload"
 							type="file"
 							multiple
-							accept=".pdf"
+							accept=".pdf,.csv"
 							className="hidden"
 							onChange={handleFileInput}
 							disabled={isUploading}
@@ -252,14 +249,14 @@ function HomePage() {
 						<p className="text-gray-400">Loading...</p>
 					) : years.length === 0 ? (
 						<p className="text-gray-400">
-							No expenses yet. Upload a PDF to get started.
+							No expenses yet. Upload a PDF or CSV file to get started.
 						</p>
 					) : (
 						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
 							{years.map((year) => (
 								<Link
 									key={year}
-									to="/$year"
+									to="/year/$year"
 									params={{ year: year.toString() }}
 									className="bg-slate-700/50 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500 rounded-lg p-6 text-center transition-all group"
 								>

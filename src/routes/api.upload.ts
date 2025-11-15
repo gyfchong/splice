@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { parsePDF } from "@/lib/pdf-parser";
+import { parseCSV } from "@/lib/csv-parser";
 
 export const Route = createFileRoute("/api/upload")({
 	server: {
@@ -23,24 +24,36 @@ export const Route = createFileRoute("/api/upload")({
 					const results = [];
 
 					for (const file of files) {
-						if (file.type !== "application/pdf") {
+						const isPDF = file.type === "application/pdf";
+						const isCSV =
+							file.type === "text/csv" ||
+							file.type === "application/csv" ||
+							file.name.endsWith(".csv");
+
+						if (!isPDF && !isCSV) {
 							results.push({
 								filename: file.name,
 								size: file.size,
 								uploadDate: new Date().toISOString(),
 								status: "error",
-								errorMessage: "Only PDF files are accepted",
+								errorMessage: "Only PDF and CSV files are accepted",
 							});
 							continue;
 						}
 
 						try {
-							// Convert file to buffer
-							const arrayBuffer = await file.arrayBuffer();
-							const buffer = Buffer.from(arrayBuffer);
+							let parseResult;
 
-							// Parse PDF
-							const parseResult = await parsePDF(buffer);
+							if (isPDF) {
+								// Convert file to buffer for PDF parsing
+								const arrayBuffer = await file.arrayBuffer();
+								const buffer = Buffer.from(arrayBuffer);
+								parseResult = await parsePDF(buffer);
+							} else {
+								// Parse CSV as text, passing filename for date extraction
+								const text = await file.text();
+								parseResult = await parseCSV(text, file.name);
+							}
 
 							if (parseResult.status === "error") {
 								results.push({

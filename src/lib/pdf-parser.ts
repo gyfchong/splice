@@ -7,6 +7,8 @@ export interface ParsedExpense {
 	date: string; // YYYY-MM-DD
 	year: number;
 	month: string; // 2-digit format
+	checked: boolean;
+	split: boolean; // Whether expense is split (50/50) or not (100%)
 }
 
 export interface ParseResult {
@@ -96,6 +98,16 @@ function parseDate(dateStr: string): string | null {
 		return `${year}-${month}-${day.padStart(2, "0")}`;
 	}
 
+	// DD Mon YY (e.g., 29 Aug 25)
+	match = dateStr.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})$/);
+	if (match) {
+		let [, day, monthName, year] = match;
+		const month = monthMap[monthName.toLowerCase()] || "01";
+		// Convert 2-digit year to 4-digit (assume 2000s)
+		year = `20${year}`;
+		return `${year}-${month}-${day.padStart(2, "0")}`;
+	}
+
 	return null;
 }
 
@@ -153,6 +165,8 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
+				checked: false, // PDF expenses need manual verification
+				split: true, // Default to split (50/50)
 			});
 			continue;
 		}
@@ -197,6 +211,8 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
+				checked: false, // PDF expenses need manual verification
+				split: true, // Default to split (50/50)
 			});
 		}
 	}

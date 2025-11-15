@@ -38,11 +38,11 @@ export const getExpensesByYear = query({
 					a.date.localeCompare(b.date),
 				)
 
-				// Calculate total share (split expenses / 2, unsplit expenses full amount)
-				// Default to split (true) if undefined for backward compatibility
-				const totalShare = sortedExpenses
-					.filter((e) => e.checked)
-					.reduce((sum, e) => sum + ((e.split ?? true) ? e.amount / 2 : e.amount), 0)
+				// Calculate total share (sum of checked expenses / 2)
+				const totalShare =
+					sortedExpenses
+						.filter((e) => e.checked)
+						.reduce((sum, e) => sum + e.amount, 0) / 2
 
 				return {
 					month,
@@ -77,6 +77,34 @@ export const toggleExpense = mutation({
 		return {
 			expenseId: args.expenseId,
 			newCheckedStatus: !expense.checked,
+			result: "success" as const,
+		}
+	},
+})
+
+// Toggle all expenses in a month
+export const toggleAllExpenses = mutation({
+	args: {
+		year: v.number(),
+		month: v.string(),
+		checked: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		const expenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.eq(q.field("year"), args.year))
+			.filter((q) => q.eq(q.field("month"), args.month))
+			.collect()
+
+		for (const expense of expenses) {
+			await ctx.db.patch(expense._id, {
+				checked: args.checked,
+			})
+		}
+
+		return {
+			updatedCount: expenses.length,
+			checked: args.checked,
 			result: "success" as const,
 		}
 	},
@@ -124,6 +152,7 @@ export const addExpenses = mutation({
 				date: v.string(),
 				year: v.number(),
 				month: v.string(),
+				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
 			}),
 		),
 	},
@@ -141,7 +170,7 @@ export const addExpenses = mutation({
 			if (!existing) {
 				await ctx.db.insert("expenses", {
 					...expense,
-					checked: false,
+					checked: expense.checked ?? false, // Use provided value or default to false
 					split: true, // Default to split (50/50)
 					uploadTimestamp: Date.now(),
 				})
@@ -221,11 +250,11 @@ export const getYearSummary = query({
 			const monthNum = (index + 1).toString().padStart(2, "0")
 			const monthExpenses = expenses.filter((e) => e.month === monthNum)
 
-			// Calculate amount shared (split expenses / 2, unsplit expenses full amount)
-			// Default to split (true) if undefined for backward compatibility
-			const amountShared = monthExpenses
-				.filter((e) => e.checked)
-				.reduce((sum, e) => sum + ((e.split ?? true) ? e.amount / 2 : e.amount), 0)
+			// Calculate amount shared (checked expenses / 2)
+			const amountShared =
+				monthExpenses
+					.filter((e) => e.checked)
+					.reduce((sum, e) => sum + e.amount, 0) / 2
 
 			// Check if there are unseen expenses
 			const hasUnseen = args.sessionStartTime
@@ -250,10 +279,10 @@ export const getYearSummary = query({
 		const averagePerMonth = Math.round((totalShared / 12) * 100) / 100
 
 		// Calculate previous year total for comparison
-		// Default to split (true) if undefined for backward compatibility
-		const previousYearTotal = previousYearExpenses
-			.filter((e) => e.checked)
-			.reduce((sum, e) => sum + ((e.split ?? true) ? e.amount / 2 : e.amount), 0)
+		const previousYearTotal =
+			previousYearExpenses
+				.filter((e) => e.checked)
+				.reduce((sum, e) => sum + e.amount, 0) / 2
 
 		let changeComparedToPreviousYear:
 			| { direction: string; icon: string; color: string }
@@ -313,11 +342,11 @@ export const getMonthExpenses = query({
 		// Sort by date
 		const sortedExpenses = expenses.sort((a, b) => a.date.localeCompare(b.date))
 
-		// Calculate total share (split expenses / 2, unsplit expenses full amount)
-		// Default to split (true) if undefined for backward compatibility
-		const totalShare = sortedExpenses
-			.filter((e) => e.checked)
-			.reduce((sum, e) => sum + ((e.split ?? true) ? e.amount / 2 : e.amount), 0)
+		// Calculate total share
+		const totalShare =
+			sortedExpenses
+				.filter((e) => e.checked)
+				.reduce((sum, e) => sum + e.amount, 0) / 2
 
 		return {
 			year: args.year,
