@@ -1,4 +1,5 @@
 import { PDFParse } from "pdf-parse";
+import { CanvasFactory } from "pdf-parse/worker";
 
 export interface ParsedExpense {
 	expenseId: string;
@@ -115,7 +116,7 @@ function parseDate(dateStr: string): string | null {
  * Extract expenses from PDF text content
  * Supports multiple formats including NAB bank statements
  */
-function extractExpenses(text: string): ParsedExpense[] {
+function extractExpenses(text: string, autoCheck = false): ParsedExpense[] {
 	const expenses: ParsedExpense[] = [];
 	const lines = text.split("\n");
 
@@ -165,7 +166,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
-				checked: false, // PDF expenses need manual verification
+				checked: autoCheck,
 				split: true, // Default to split (50/50)
 			});
 			continue;
@@ -211,7 +212,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
-				checked: false, // PDF expenses need manual verification
+				checked: autoCheck,
 				split: true, // Default to split (50/50)
 			});
 		}
@@ -224,10 +225,15 @@ function extractExpenses(text: string): ParsedExpense[] {
 /**
  * Parse a PDF file buffer and extract expenses
  */
-export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
+export async function parsePDF(
+	buffer: Buffer,
+	autoCheck = false,
+): Promise<ParseResult> {
+	let parser: PDFParse | null = null;
 	try {
 		console.log("[PDF Parser] Starting PDF parsing...");
-		const parser = new PDFParse({ data: buffer });
+		// Use CanvasFactory for Node.js/serverless environments to fix DOMMatrix error
+		parser = new PDFParse({ data: buffer, CanvasFactory });
 		const result = await parser.getText();
 		console.log(
 			`[PDF Parser] Extracted ${result.text.length} characters from PDF`,
@@ -236,7 +242,7 @@ export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
 		// Log first 500 chars for debugging
 		console.log("[PDF Parser] First 500 chars:", result.text.substring(0, 500));
 
-		const expenses = extractExpenses(result.text);
+		const expenses = extractExpenses(result.text, autoCheck);
 
 		if (expenses.length === 0) {
 			console.error("[PDF Parser] No expenses found in PDF");
@@ -261,5 +267,10 @@ export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
 			errorMessage:
 				error instanceof Error ? error.message : "Failed to parse PDF",
 		};
+	} finally {
+		// Always destroy the parser to free memory
+		if (parser) {
+			await parser.destroy();
+		}
 	}
 }
