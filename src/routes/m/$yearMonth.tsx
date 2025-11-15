@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronLeft, User, Users } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { Calendar, ChevronLeft, Tag, User, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CategorySelect } from "@/components/CategorySelect";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
@@ -20,6 +21,14 @@ function MonthPage() {
 	const toggleExpense = useMutation(api.expenses.toggleExpense);
 	const toggleSplit = useMutation(api.expenses.toggleSplit);
 	const toggleAllExpenses = useMutation(api.expenses.toggleAllExpenses);
+	const updateCategoryWithMapping = useAction(
+		api.categorization.updateExpenseCategoryWithMapping,
+	);
+
+	// Track which expense is being updated
+	const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(
+		null,
+	);
 
 	// Mark this month as visited when component mounts
 	useEffect(() => {
@@ -46,6 +55,26 @@ function MonthPage() {
 			await toggleSplit({ expenseId });
 		} catch (error) {
 			console.error("Failed to toggle split:", error);
+		}
+	};
+
+	const handleCategoryChange = async (
+		expenseId: string,
+		merchantName: string,
+		newCategory: string,
+	) => {
+		setUpdatingExpenseId(expenseId);
+		try {
+			await updateCategoryWithMapping({
+				expenseId,
+				merchantName,
+				category: newCategory,
+				updateAllFromMerchant: true, // Apply to all future expenses from this merchant
+			});
+		} catch (error) {
+			console.error("Failed to update category:", error);
+		} finally {
+			setUpdatingExpenseId(null);
 		}
 	};
 
@@ -160,55 +189,77 @@ function MonthPage() {
 						</div>
 
 						{/* Expenses List */}
-						<div className="space-y-2">
+						<div className="space-y-3">
 							{data.expenses.map((expense) => (
 								<div
 									key={expense._id}
-									className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
+									className={`p-4 rounded-lg transition-all ${
 										expense.checked
 											? "bg-cyan-500/10 border border-cyan-500/30"
 											: "bg-slate-700/30 border border-slate-600/30 hover:bg-slate-700/50"
 									}`}
 								>
-									<input
-										id={`expense.${expense.expenseId}`}
-										type="checkbox"
-										checked={expense.checked}
-										onChange={() => handleToggle(expense.expenseId)}
-										className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
-									/>
-									<label
-										htmlFor={`expense.${expense.expenseId}`}
-										className="flex-1 min-w-0"
-									>
-										<div className="text-white font-medium truncate">
-											{expense.name}
-										</div>
-										<div className="text-sm text-gray-400">
-											{formatDate(expense.date)}
-										</div>
-									</label>
-									<div className="text-lg font-semibold text-white">
-										{formatCurrency(expense.amount)}
-									</div>
-									<div className="flex items-center gap-2">
-										{(expense.split ?? true) ? (
-											<Users className="w-4 h-4 text-cyan-400" />
-										) : (
-											<User className="w-4 h-4 text-purple-400" />
-										)}
-										<Switch
-											checked={expense.split ?? true}
-											onCheckedChange={() =>
-												handleToggleSplit(expense.expenseId)
-											}
-											className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
-											title={
-												(expense.split ?? true)
-													? "Split 50/50 - Toggle for 100%"
-													: "100% - Toggle for 50/50 split"
-											}
+									{/* First row: checkbox, name, amount, split toggle */}
+									<div className="flex items-center gap-4 mb-2">
+										<input
+											id={`expense.${expense.expenseId}`}
+											type="checkbox"
+											checked={expense.checked}
+											onChange={() => handleToggle(expense.expenseId)}
+											className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer flex-shrink-0"
 										/>
+										<label
+											htmlFor={`expense.${expense.expenseId}`}
+											className="flex-1 min-w-0"
+										>
+											<div className="text-white font-medium truncate">
+												{expense.name}
+											</div>
+											<div className="text-sm text-gray-400">
+												{formatDate(expense.date)}
+											</div>
+										</label>
+										<div className="text-lg font-semibold text-white flex-shrink-0">
+											{formatCurrency(expense.amount)}
+										</div>
+										<div className="flex items-center gap-2 flex-shrink-0">
+											{(expense.split ?? true) ? (
+												<Users className="w-4 h-4 text-cyan-400" />
+											) : (
+												<User className="w-4 h-4 text-purple-400" />
+											)}
+											<Switch
+												checked={expense.split ?? true}
+												onCheckedChange={() =>
+													handleToggleSplit(expense.expenseId)
+												}
+												className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
+												title={
+													(expense.split ?? true)
+														? "Split 50/50 - Toggle for 100%"
+														: "100% - Toggle for 50/50 split"
+												}
+											/>
+										</div>
+									</div>
+
+									{/* Second row: category selector */}
+									<div className="flex items-center gap-2 ml-9">
+										<Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
+										<CategorySelect
+											value={expense.category || "Other"}
+											onValueChange={(newCategory) =>
+												handleCategoryChange(
+													expense.expenseId,
+													expense.merchantName || expense.name,
+													newCategory,
+												)
+											}
+											disabled={updatingExpenseId === expense.expenseId}
+										/>
+										{updatingExpenseId === expense.expenseId && (
+											<span className="text-xs text-gray-400">Updating...</span>
+										)}
 									</div>
 								</div>
 							))}

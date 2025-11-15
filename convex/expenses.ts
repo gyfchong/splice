@@ -1,5 +1,6 @@
-import { mutation, query } from "./_generated/server"
+import { action, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
+import { api } from "./_generated/api"
 
 // Get all years that have expenses
 export const getYears = query({
@@ -8,6 +9,14 @@ export const getYears = query({
 		const expenses = await ctx.db.query("expenses").collect()
 		const years = [...new Set(expenses.map((e) => e.year))].sort((a, b) => b - a)
 		return years
+	},
+})
+
+// Get all expenses (for scanning and building mappings)
+export const getAllExpenses = query({
+	args: {},
+	handler: async (ctx) => {
+		return await ctx.db.query("expenses").collect()
 	},
 })
 
@@ -153,6 +162,8 @@ export const addExpenses = mutation({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
+				category: v.optional(v.string()), // Optional category
+				merchantName: v.optional(v.string()), // Optional normalized merchant name
 			}),
 		),
 	},
@@ -173,6 +184,8 @@ export const addExpenses = mutation({
 					checked: expense.checked ?? false, // Use provided value or default to false
 					split: true, // Default to split (50/50)
 					uploadTimestamp: Date.now(),
+					category: expense.category,
+					merchantName: expense.merchantName,
 				})
 				newExpenseIds.push(expense.expenseId)
 			} else {
@@ -401,5 +414,134 @@ export const getMonthlyTotals = query({
 			}))
 
 		return monthlyData
+	},
+})
+
+// Update expense category
+export const updateExpenseCategory = internalMutation({
+	args: {
+		expenseId: v.string(),
+		category: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error("Expense not found")
+		}
+
+		await ctx.db.patch(expense._id, {
+			category: args.category,
+		})
+
+		return {
+			expenseId: args.expenseId,
+			category: args.category,
+			result: "success" as const,
+		}
+	},
+})
+
+// Internal mutation to update expense with category and merchant
+export const updateExpenseWithCategoryAndMerchant = internalMutation({
+	args: {
+		expenseId: v.string(),
+		category: v.string(),
+		merchantName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error("Expense not found")
+		}
+
+		await ctx.db.patch(expense._id, {
+			category: args.category,
+			merchantName: args.merchantName,
+		})
+	},
+})
+
+/**
+ * Add expenses with automatic categorization
+ * This action:
+ * 1. Takes parsed expenses from PDF/CSV
+ * 2. Normalizes merchant names
+ * 3. Categorizes each expense using AI or cached mappings
+ * 4. Adds expenses to database with categories
+ */
+export const addExpensesWithCategories = action({
+	args: {
+		expenses: v.array(
+			v.object({
+				expenseId: v.string(),
+				name: v.string(),
+				amount: v.number(),
+				date: v.string(),
+				year: v.number(),
+				month: v.string(),
+				checked: v.optional(v.boolean()),
+			}),
+		),
+		userId: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		addedCount: number
+		duplicateCount: number
+		newExpenseIds: string[]
+	}> => {
+		const { normalizeMerchant } = await import("./utils")
+
+		const expensesWithCategories: Array<{
+			expenseId: string
+			name: string
+			amount: number
+			date: string
+			year: number
+			month: string
+			checked?: boolean
+			category: string
+			merchantName: string
+		}> = []
+
+		// Categorize each expense
+		for (const expense of args.expenses) {
+			// Normalize merchant name
+			const merchantName = normalizeMerchant(expense.name)
+
+			// Get category for this merchant
+			const category = await ctx.runAction(api.categorization.getCategoryForMerchant, {
+				merchantName,
+				description: expense.name,
+				userId: args.userId,
+			})
+
+			expensesWithCategories.push({
+				...expense,
+				category,
+				merchantName,
+			})
+		}
+
+		// Add all expenses to database
+		const result: {
+			addedCount: number
+			duplicateCount: number
+			newExpenseIds: string[]
+		} = await ctx.runMutation(api.expenses.addExpenses, {
+			expenses: expensesWithCategories,
+		})
+
+		return result
 	},
 })
