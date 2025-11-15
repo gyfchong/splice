@@ -24,6 +24,7 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 - **Validation**: Zod 4.1.12
 - **PDF Parsing**: pdf-parse 2.4.5
 - **CSV Parsing**: papaparse 5.5.3
+- **Charts**: Recharts 3.4.1
 - **Utilities**: clsx 2.1.1, tailwind-merge 3.4.0, class-variance-authority 0.7.1
 - **Animations**: tw-animate-css 1.4.0
 - **Deployment**: Netlify
@@ -39,15 +40,15 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 **Quick Stats:**
 - 5 Routes (1 API, 3 pages, 1 layout)
-- 7 UI Components (Shadcn/UI)
+- 9 Components (7 Shadcn/UI + 2 custom)
 - 5 Utility Libraries (parsers, helpers, categories)
 - 3 Convex Functions (expenses, categorization, utils)
-- 4 Database Tables (expenses, uploads, merchantMappings, personalMappings)
+- 5 Database Tables (expenses, uploads, merchantMappings, personalMappings, customCategories)
 
 **Full Directory Tree:**
 
 ```
-/home/gyfchong/Code/splice/
+/home/user/splice/
 ├── .claude/                   # Claude Code configuration
 │   └── settings.local.json
 ├── .netlify/                  # Netlify build artifacts (gitignored)
@@ -61,18 +62,16 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   │   └── server.d.ts      # Server function types
 │   ├── categorization.ts     # AI-powered expense categorization logic
 │   ├── expenses.ts           # Expense queries, mutations, and actions
-│   ├── schema.ts             # Database schema definitions (4 tables)
+│   ├── schema.ts             # Database schema definitions (5 tables)
 │   ├── utils.ts              # Merchant normalization utilities (80+ merchants)
 │   └── tsconfig.json         # TypeScript config for Convex
 ├── node_modules/              # Dependencies (gitignored)
 ├── public/                    # Static assets (served at root)
 │   ├── favicon.ico           # Site favicon
-│   ├── logo.svg              # App logo (TanStack)
 │   ├── logo192.png           # PWA icon (192x192)
 │   ├── logo512.png           # PWA icon (512x512)
 │   ├── manifest.json         # PWA manifest
 │   ├── robots.txt            # SEO robots file
-│   ├── styles.css            # Global Tailwind CSS
 │   ├── tanstack-circle-logo.png
 │   └── tanstack-word-logo-white.svg
 ├── src/
@@ -85,8 +84,9 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   │   │   ├── slider.tsx
 │   │   │   ├── switch.tsx
 │   │   │   └── textarea.tsx
-│   │   └── Header.tsx       # Main navigation header
-│   ├── data/                # Static data/constants (currently empty)
+│   │   ├── CategorySelect.tsx    # Expense category selector with custom category support
+│   │   ├── Header.tsx            # Main navigation header
+│   │   └── MonthlyExpensesChart.tsx  # Monthly expenses visualization chart
 │   ├── integrations/        # Third-party service integrations
 │   │   ├── convex/
 │   │   │   └── provider.tsx # Convex provider wrapper
@@ -102,12 +102,14 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   ├── routes/              # File-based routes (TanStack Router)
 │   │   ├── m/               # Compact month view routes
 │   │   │   └── $yearMonth.tsx # /m/2024-01 (dynamic yearMonth param)
-│   │   ├── $year.tsx        # /$year - Year summary with aggregates
+│   │   ├── $year.tsx        # /$year - Year summary with aggregates and chart
 │   │   ├── __root.tsx       # Root layout (providers, header, devtools)
 │   │   ├── api.upload.ts    # POST /api/upload - Multi-file upload handler
 │   │   └── index.tsx        # / - Home page with file upload
+│   ├── logo.svg             # App logo (TanStack)
 │   ├── router.tsx           # Router configuration
-│   └── routeTree.gen.ts     # Auto-generated route tree (DO NOT EDIT)
+│   ├── routeTree.gen.ts     # Auto-generated route tree (DO NOT EDIT)
+│   └── styles.css           # Global Tailwind CSS
 ├── .cursorrules              # Cursor IDE rules
 ├── .cta.json                 # CTA configuration
 ├── .env.local                # Local environment variables (gitignored)
@@ -159,7 +161,8 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 2. **Reusable components** in `src/components/`
    - `Header.tsx` - Main navigation component
-   - Future components go here
+   - `CategorySelect.tsx` - Expense category selector with custom category creation
+   - `MonthlyExpensesChart.tsx` - Bar chart visualization for monthly expense trends
 
 3. **UI primitives** in `src/components/ui/` (Shadcn components)
    - All installed via `pnpx shadcn@latest add [component]`
@@ -179,20 +182,23 @@ This file provides comprehensive guidance for AI assistants working on the Splic
    - `tanstack-query/devtools.tsx` - React Query devtools
 
 6. **Static assets** in `public/` (served at root path)
-   - `styles.css` - Global Tailwind CSS (imported in __root.tsx)
    - `manifest.json` - PWA manifest
    - `favicon.ico`, `logo192.png`, `logo512.png` - Icons
-   - `logo.svg` - TanStack logo
+   - `tanstack-circle-logo.png`, `tanstack-word-logo-white.svg` - TanStack branding
    - `robots.txt` - SEO robots file
 
-7. **Convex backend** in `convex/` (separate from src/)
-   - `schema.ts` - Database schema (4 tables: expenses, uploads, merchantMappings, personalMappings)
+7. **Styles and assets** in `src/`
+   - `styles.css` - Global Tailwind CSS (imported in __root.tsx)
+   - `logo.svg` - TanStack logo
+
+8. **Convex backend** in `convex/` (separate from src/)
+   - `schema.ts` - Database schema (5 tables: expenses, uploads, merchantMappings, personalMappings, customCategories)
    - `expenses.ts` - Expense queries, mutations, and actions
    - `categorization.ts` - AI categorization logic (OpenRouter + Groq)
    - `utils.ts` - Server-side merchant normalization (80+ known merchants)
    - `_generated/` - Auto-generated types (DO NOT EDIT)
 
-8. **Configuration files** (root directory)
+9. **Configuration files** (root directory)
    - `vite.config.ts` - Vite build config with TanStack Start plugin
    - `tsconfig.json` - TypeScript config with path aliases
    - `biome.json` - Formatter/linter config (tabs, double quotes)
@@ -355,6 +361,10 @@ Convex is configured for real-time backend. Provider is in `src/integrations/con
   - `category` (string) - User's preferred category for this merchant
   - `createdAt` (number) - Timestamp
   - Index: `by_user_merchant` on `userId` and `merchantName`
+- `customCategories`:
+  - `name` (string) - Custom category name created by user
+  - `createdAt` (number) - Timestamp
+  - Index: `by_name` on `name`
 
 **Common Convex Queries & Mutations:**
 
@@ -475,7 +485,7 @@ function ExpenseForm() {
 
 ### Tailwind CSS
 
-- **Version**: 4.0.6 (latest)
+- **Version**: 4.1.17
 - **Configuration**: Uses CSS variables for theming
 - **Base Color**: Zinc (components.json:9)
 - **Global Styles**: `src/styles.css`
@@ -548,14 +558,14 @@ Note: Test files should be placed alongside the code they test or in a `__tests_
 pnpm build
 ```
 
-Output directory: `dist/client` (netlify.toml:3)
+Output directory: `dist/client` (netlify.toml:2)
 
 ## Deployment
 
 ### Netlify Configuration (netlify.toml)
 
 - **Build Command**: `vite build`
-- **Publish Directory**: `dist/client`
+- **Build Output Directory**: `dist/client`
 - **Dev Command**: `vite dev`
 - **Dev Port**: 3000
 
@@ -860,16 +870,18 @@ The application provides the following core features:
    - Flexible column detection (Date, Item, Cost)
 4. **AI-Powered Categorization**: Automatic expense categorization using OpenRouter + Groq
    - 13 predefined categories
+   - Custom category creation support
    - Merchant normalization (80+ known merchants)
    - Three-tier learning system (personal → global → AI)
 5. **Year-Based Organization**: View expenses organized by year with aggregates
 6. **Month Grouping**: Expenses grouped by month with totals
-7. **Expense Verification**: Mark transactions as checked/verified
-8. **Split Expense Tracking**: Distinguish between split (50/50) and individual (100%) expenses
-9. **Bulk Operations**: Toggle all expenses in a month
-10. **Year-over-Year Comparison**: Track spending trends
-11. **Unseen Expense Tracking**: Visual indicators for new expenses
-12. **Real-Time Sync**: Changes sync in real-time via Convex
+7. **Visual Analytics**: Interactive bar chart showing monthly expense trends (using Recharts)
+8. **Expense Verification**: Mark transactions as checked/verified
+9. **Split Expense Tracking**: Distinguish between split (50/50) and individual (100%) expenses
+10. **Bulk Operations**: Toggle all expenses in a month
+11. **Year-over-Year Comparison**: Track spending trends
+12. **Unseen Expense Tracking**: Visual indicators for new expenses
+13. **Real-Time Sync**: Changes sync in real-time via Convex
 
 ### Supported Bank Statement Formats
 
@@ -1122,7 +1134,7 @@ New expenses uploaded during a session are tracked:
 
 ## Version Information
 
-**Last updated**: 2025-11-16
+**Last updated**: 2025-11-15
 **Node version**: Compatible with Vite 7.2.2 (Node 18+)
 **Package manager**: pnpm
 **TypeScript**: 5.9.3
@@ -1132,9 +1144,17 @@ New expenses uploaded during a session are tracked:
 ### Recent Changes
 
 **November 2025:**
+- **Custom Categories**: Users can now create custom expense categories
+  - New `customCategories` database table
+  - `CategorySelect` component with inline category creation
+  - Categories persist across sessions
+- **Monthly Expense Visualization**: Interactive bar chart on year summary page
+  - `MonthlyExpensesChart` component using Recharts
+  - Visual representation of spending trends throughout the year
+  - Responsive design with tooltips and animations
 - **AI-Powered Categorization**: Integrated OpenRouter + Groq for automatic expense categorization
   - Three-tier categorization system (personal → global → AI)
-  - 13 predefined expense categories
+  - 13 predefined expense categories + custom category support
   - Merchant normalization with 80+ known merchants
   - Learning system with user feedback and consensus building
 - **CSV Parsing**: Full CSV support for expense imports
