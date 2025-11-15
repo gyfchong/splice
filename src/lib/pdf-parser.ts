@@ -174,24 +174,38 @@ function extractExpenses(text: string): ParsedExpense[] {
  */
 export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
 	try {
-		const pdf = new PDFParse(buffer);
-		const data = await pdf.getText();
-		const expenses = extractExpenses(data.text);
+		console.log("[PDF Parser] Starting PDF parsing...");
+		const parser = new PDFParse({ data: buffer });
+		const result = await parser.getText();
+		console.log(
+			`[PDF Parser] Extracted ${result.text.length} characters from PDF`,
+		);
+
+		// Log first 500 chars for debugging
+		console.log(
+			"[PDF Parser] First 500 chars:",
+			result.text.substring(0, 500),
+		);
+
+		const expenses = extractExpenses(result.text);
 
 		if (expenses.length === 0) {
+			console.error("[PDF Parser] No expenses found in PDF");
 			return {
 				expenses: [],
 				status: "error",
 				errorMessage:
-					"No expenses found in PDF. Please ensure the PDF is a valid bank or credit card statement.",
+					"No expenses found in PDF. Please ensure the PDF is a valid bank or credit card statement with a format like: Date Description Amount (e.g., 01/15/2024 Coffee Shop $5.99)",
 			};
 		}
 
+		console.log(`[PDF Parser] Successfully parsed ${expenses.length} expenses`);
 		return {
 			expenses,
 			status: "success",
 		};
 	} catch (error) {
+		console.error("[PDF Parser] Error:", error);
 		return {
 			expenses: [],
 			status: "error",
