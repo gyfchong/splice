@@ -40,18 +40,6 @@ function generateExpenseId(name: string, amount: number, date: string): string {
  * Parse a date string in various formats to YYYY-MM-DD
  */
 function parseDate(dateStr: string): string | null {
-	// Try common formats: MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, etc.
-	const formats = [
-		// MM/DD/YYYY or M/D/YYYY
-		/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-		// DD-MMM-YYYY (e.g., 15-Jan-2024)
-		/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/,
-		// YYYY-MM-DD
-		/^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-		// MMM DD, YYYY (e.g., Jan 15, 2024)
-		/^([A-Za-z]{3})\s+(\d{1,2}),\s+(\d{4})$/,
-	];
-
 	const monthMap: Record<string, string> = {
 		jan: "01",
 		feb: "02",
@@ -67,36 +55,45 @@ function parseDate(dateStr: string): string | null {
 		dec: "12",
 	};
 
-	for (const format of formats) {
-		const match = dateStr.match(format);
-		if (match) {
-			// Handle different format types
-			if (format.source.includes("\\/")) {
-				// MM/DD/YYYY format
-				const [, month, day, year] = match;
-				const m = month.padStart(2, "0");
-				const d = day.padStart(2, "0");
-				return `${year}-${m}-${d}`;
-			}
-			if (format.source.includes("MMM")) {
-				// Month name formats
-				const [, monthOrDay, dayOrYear, year] = match;
-				const monthName = monthOrDay.toLowerCase();
-				if (monthMap[monthName]) {
-					// MMM DD, YYYY
-					return `${year}-${monthMap[monthName]}-${dayOrYear.padStart(2, "0")}`;
-				}
-				// DD-MMM-YYYY
-				const day = monthOrDay;
-				const month = monthMap[dayOrYear.toLowerCase()];
-				return `${year}-${month}-${day.padStart(2, "0")}`;
-			}
-			if (format.source.startsWith("^\\(\\d\\{4\\}\\)")) {
-				// YYYY-MM-DD
-				const [, year, month, day] = match;
-				return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-			}
+	// DD/MM/YY or DD/MM/YYYY (Australian format - NAB statements)
+	let match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+	if (match) {
+		let [, day, month, year] = match;
+		// Convert 2-digit year to 4-digit (assume 2000s)
+		if (year.length === 2) {
+			year = `20${year}`;
 		}
+		return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+	}
+
+	// MM/DD/YYYY (US format)
+	match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+	if (match) {
+		const [, month, day, year] = match;
+		return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+	}
+
+	// DD-MMM-YYYY (e.g., 15-Jan-2024)
+	match = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+	if (match) {
+		const [, day, monthName, year] = match;
+		const month = monthMap[monthName.toLowerCase()] || "01";
+		return `${year}-${month}-${day.padStart(2, "0")}`;
+	}
+
+	// YYYY-MM-DD
+	match = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+	if (match) {
+		const [, year, month, day] = match;
+		return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+	}
+
+	// MMM DD, YYYY (e.g., Jan 15, 2024)
+	match = dateStr.match(/^([A-Za-z]{3})\s+(\d{1,2}),?\s+(\d{4})$/);
+	if (match) {
+		const [, monthName, day, year] = match;
+		const month = monthMap[monthName.toLowerCase()] || "01";
+		return `${year}-${month}-${day.padStart(2, "0")}`;
 	}
 
 	return null;
@@ -104,25 +101,67 @@ function parseDate(dateStr: string): string | null {
 
 /**
  * Extract expenses from PDF text content
- * This is a generic parser that looks for common patterns in bank/credit card statements
+ * Supports multiple formats including NAB bank statements
  */
 function extractExpenses(text: string): ParsedExpense[] {
 	const expenses: ParsedExpense[] = [];
 	const lines = text.split("\n");
 
-	// Common patterns for credit card/bank statements:
-	// Date | Description | Amount
-	// We'll look for lines that contain dates and amounts
+	// NAB format: ProcessedDate \t TransactionDate \t CardNo \t Description \t Amount
+	// Example: 25/08/25 	23/08/25 	V0513 	APPLE.COM/BILL SYDNEY 	4.49
+	const nabPattern =
+		/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(V\d{4})\s+(.+?)\s+(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(CR)?$/;
 
+	// Generic pattern for other statements
 	const amountPattern = /\$?\s*-?\d{1,3}(?:,\d{3})*(?:\.\d{2})?/;
-	const datePattern =
-		/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b[A-Za-z]{3}\s+\d{1,2},?\s+\d{4}\b/;
+	const datePattern = /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/;
+
+	console.log(`[Extract] Processing ${lines.length} lines`);
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i].trim();
 		if (!line) continue;
 
-		// Look for lines that have both a date and an amount
+		// Try NAB format first
+		const nabMatch = line.match(nabPattern);
+		if (nabMatch) {
+			const [, , transactionDate, , description, amountStr, isCredit] =
+				nabMatch;
+
+			// Skip credits (payments)
+			if (isCredit) {
+				console.log(`[Extract] Skipping credit: ${description}`);
+				continue;
+			}
+
+			const amount = Number.parseFloat(amountStr.replace(/,/g, ""));
+			if (Number.isNaN(amount) || amount === 0) continue;
+
+			const parsedDate = parseDate(transactionDate);
+			if (!parsedDate) {
+				console.log(`[Extract] Failed to parse date: ${transactionDate}`);
+				continue;
+			}
+
+			const [year, month] = parsedDate.split("-");
+			const expenseId = generateExpenseId(
+				description,
+				amount,
+				parsedDate,
+			);
+
+			expenses.push({
+				expenseId,
+				name: description,
+				amount,
+				date: parsedDate,
+				year: Number.parseInt(year, 10),
+				month,
+			});
+			continue;
+		}
+
+		// Fall back to generic pattern
 		const dateMatch = line.match(datePattern);
 		const amountMatch = line.match(amountPattern);
 
@@ -166,6 +205,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 		}
 	}
 
+	console.log(`[Extract] Found ${expenses.length} expenses`);
 	return expenses;
 }
 
