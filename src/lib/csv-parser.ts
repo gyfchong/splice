@@ -8,6 +8,7 @@ export interface ParsedExpense {
 	year: number;
 	month: string; // 2-digit format
 	checked: boolean;
+	split: boolean; // Whether expense is split (50/50) or not (100%)
 }
 
 export interface ParseResult {
@@ -229,6 +230,31 @@ function detectColumns(headers: string[]): {
 }
 
 /**
+ * Check if a row is a section header (e.g., "General expenses", "Individual")
+ */
+function detectSectionHeader(row: string[]): "shared" | "individual" | null {
+	if (!row || row.length === 0) return null;
+
+	const firstCell = row[0]?.toLowerCase().trim() || "";
+
+	// Check for shared/general expense section
+	if (
+		firstCell.includes("general") ||
+		firstCell.includes("shared") ||
+		firstCell.includes("split")
+	) {
+		return "shared";
+	}
+
+	// Check for individual expense section
+	if (firstCell.includes("individual") || firstCell.includes("personal")) {
+		return "individual";
+	}
+
+	return null;
+}
+
+/**
  * Check if a row should be skipped (summary rows, empty rows, etc.)
  */
 function shouldSkipRow(row: string[]): boolean {
@@ -368,9 +394,20 @@ export async function parseCSV(
 
 		const expenses: ParsedExpense[] = [];
 
+		// Track current section (default to shared for files with dates, or based on first section)
+		let currentSection: "shared" | "individual" = "shared";
+
 		// Process data rows (skip header row and rows before it)
 		for (let i = headerRowIndex + 1; i < rows.length; i++) {
 			const row = rows[i];
+
+			// Check for section headers
+			const sectionType = detectSectionHeader(row);
+			if (sectionType) {
+				currentSection = sectionType;
+				console.log(`[CSV Parser] Switched to ${sectionType} section at row ${i + 1}`);
+				continue;
+			}
 
 			// Skip summary/empty rows
 			if (shouldSkipRow(row)) {
@@ -438,7 +475,8 @@ export async function parseCSV(
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
-				checked: true, // CSV expenses are pre-verified shared expenses
+				checked: true, // CSV expenses are pre-verified
+				split: currentSection === "shared", // Mark as split (50/50) or individual (100%) based on section
 			});
 		}
 

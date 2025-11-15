@@ -8,6 +8,7 @@ export interface ParsedExpense {
 	year: number;
 	month: string; // 2-digit format
 	checked: boolean;
+	split: boolean; // Whether expense is split (50/50) or not (100%)
 }
 
 export interface ParseResult {
@@ -165,6 +166,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				year: Number.parseInt(year, 10),
 				month,
 				checked: false, // PDF expenses need manual verification
+				split: true, // Default to split (50/50)
 			});
 			continue;
 		}
@@ -210,6 +212,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				year: Number.parseInt(year, 10),
 				month,
 				checked: false, // PDF expenses need manual verification
+				split: true, // Default to split (50/50)
 			});
 		}
 	}
