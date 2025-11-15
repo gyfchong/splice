@@ -8,7 +8,9 @@
  * @module
  */
 
+import type * as categorization from "../categorization.js";
 import type * as expenses from "../expenses.js";
+import type * as utils from "../utils.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +19,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  categorization: typeof categorization;
   expenses: typeof expenses;
+  utils: typeof utils;
 }>;
 
 /**

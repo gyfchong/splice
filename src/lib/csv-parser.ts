@@ -404,7 +404,9 @@ export async function parseCSV(
 			const sectionType = detectSectionHeader(row);
 			if (sectionType) {
 				currentSection = sectionType;
-				console.log(`[CSV Parser] Switched to ${sectionType} section at row ${i + 1}`);
+				console.log(
+					`[CSV Parser] Switched to ${sectionType} section at row ${i + 1}`,
+				);
 				continue;
 			}
 

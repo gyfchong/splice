@@ -23,6 +23,7 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 - **Testing**: Vitest 4.0.9
 - **Validation**: Zod 4.1.12
 - **PDF Parsing**: pdf-parse 2.4.5
+- **CSV Parsing**: papaparse 5.5.3
 - **Utilities**: clsx 2.1.1, tailwind-merge 3.4.0, class-variance-authority 0.7.1
 - **Animations**: tw-animate-css 1.4.0
 - **Deployment**: Netlify
@@ -30,25 +31,53 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 ### Additional Dev Dependencies
 
-- **Types**: @types/node 24.10.1, @types/pdf-parse 1.1.5
+- **Types**: @types/node 24.10.1, @types/pdf-parse 1.1.5, @types/papaparse 5.5.0, @types/react 19.2.5, @types/react-dom 19.2.3
 - **Performance**: web-vitals 5.1.0
+- **AI/ML**: OpenRouter API (via Groq) for expense categorization
 
 ## Directory Structure
 
+**Quick Stats:**
+- 5 Routes (1 API, 3 pages, 1 layout)
+- 7 UI Components (Shadcn/UI)
+- 5 Utility Libraries (parsers, helpers, categories)
+- 3 Convex Functions (expenses, categorization, utils)
+- 4 Database Tables (expenses, uploads, merchantMappings, personalMappings)
+
+**Full Directory Tree:**
+
 ```
 /home/gyfchong/Code/splice/
+├── .claude/                   # Claude Code configuration
+│   └── settings.local.json
+├── .netlify/                  # Netlify build artifacts (gitignored)
+├── .tanstack/                 # TanStack build cache (gitignored)
+├── .vscode/                   # VS Code settings
+│   └── settings.json
 ├── convex/                    # Backend code (Convex)
-│   ├── _generated/           # Auto-generated Convex files
-│   ├── schema.ts             # Database schema definitions
-│   ├── expenses.ts           # Expense-related Convex functions
+│   ├── _generated/           # Auto-generated Convex files (DO NOT EDIT)
+│   │   ├── api.d.ts         # API type definitions
+│   │   ├── dataModel.d.ts   # Data model types
+│   │   └── server.d.ts      # Server function types
+│   ├── categorization.ts     # AI-powered expense categorization logic
+│   ├── expenses.ts           # Expense queries, mutations, and actions
+│   ├── schema.ts             # Database schema definitions (4 tables)
+│   ├── utils.ts              # Merchant normalization utilities (80+ merchants)
 │   └── tsconfig.json         # TypeScript config for Convex
-├── example/                   # Example files for testing
-│   └── 0513-20250919-statement.pdf # Sample bank statement
-├── public/                   # Static assets
-│   └── manifest.json         # PWA manifest
+├── node_modules/              # Dependencies (gitignored)
+├── public/                    # Static assets (served at root)
+│   ├── favicon.ico           # Site favicon
+│   ├── logo.svg              # App logo (TanStack)
+│   ├── logo192.png           # PWA icon (192x192)
+│   ├── logo512.png           # PWA icon (512x512)
+│   ├── manifest.json         # PWA manifest
+│   ├── robots.txt            # SEO robots file
+│   ├── styles.css            # Global Tailwind CSS
+│   ├── tanstack-circle-logo.png
+│   └── tanstack-word-logo-white.svg
 ├── src/
 │   ├── components/           # React components
-│   │   ├── ui/              # Shadcn UI components
+│   │   ├── ui/              # Shadcn UI primitives (Radix-based)
 │   │   │   ├── button.tsx
 │   │   │   ├── input.tsx
 │   │   │   ├── label.tsx
@@ -58,32 +87,41 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 │   │   │   └── textarea.tsx
 │   │   └── Header.tsx       # Main navigation header
 │   ├── data/                # Static data/constants (currently empty)
-│   ├── integrations/        # Third-party integrations
+│   ├── integrations/        # Third-party service integrations
 │   │   ├── convex/
 │   │   │   └── provider.tsx # Convex provider wrapper
 │   │   └── tanstack-query/
-│   │       ├── root-provider.tsx
-│   │       └── devtools.tsx
-│   ├── lib/                 # Utility functions
-│   │   ├── utils.ts         # cn() helper for Tailwind
-│   │   └── pdf-parser.ts    # PDF bank statement parser
-│   ├── routes/              # File-based routes
-│   │   ├── year/
-│   │   │   └── $year.tsx    # Dynamic year route for expenses
-│   │   ├── __root.tsx       # Root layout component
-│   │   ├── index.tsx        # Home page with upload
-│   │   └── api.upload.ts    # File upload API endpoint
+│   │       ├── devtools.tsx # React Query devtools
+│   │       └── root-provider.tsx # Query client setup
+│   ├── lib/                 # Utility functions and parsers
+│   │   ├── categories.ts    # Expense category definitions (13 categories)
+│   │   ├── csv-parser.ts    # CSV expense parser (Google Sheets, NAB exports)
+│   │   ├── normalize-merchant.ts # Client-side merchant normalization
+│   │   ├── pdf-parser.ts    # PDF bank statement parser (NAB format)
+│   │   └── utils.ts         # cn() helper for Tailwind class merging
+│   ├── routes/              # File-based routes (TanStack Router)
+│   │   ├── m/               # Compact month view routes
+│   │   │   └── $yearMonth.tsx # /m/2024-01 (dynamic yearMonth param)
+│   │   ├── $year.tsx        # /$year - Year summary with aggregates
+│   │   ├── __root.tsx       # Root layout (providers, header, devtools)
+│   │   ├── api.upload.ts    # POST /api/upload - Multi-file upload handler
+│   │   └── index.tsx        # / - Home page with file upload
 │   ├── router.tsx           # Router configuration
-│   ├── routeTree.gen.ts     # Auto-generated route tree
-│   ├── styles.css           # Global styles (Tailwind)
-│   └── logo.svg             # App logo
-├── .vscode/                 # VS Code settings
-├── biome.json              # Biome configuration
-├── components.json         # Shadcn configuration
-├── netlify.toml            # Netlify deployment config
-├── package.json            # Dependencies and scripts
-├── tsconfig.json           # TypeScript configuration
-└── vite.config.ts          # Vite configuration
+│   └── routeTree.gen.ts     # Auto-generated route tree (DO NOT EDIT)
+├── .cursorrules              # Cursor IDE rules
+├── .cta.json                 # CTA configuration
+├── .env.local                # Local environment variables (gitignored)
+├── .gitignore                # Git ignore rules
+├── biome.json                # Biome formatter/linter configuration
+├── CLAUDE.md                 # AI assistant development guide (THIS FILE)
+├── components.json           # Shadcn/UI configuration
+├── LICENSE                   # Project license
+├── netlify.toml              # Netlify deployment configuration
+├── package.json              # Dependencies and scripts
+├── pnpm-lock.yaml            # pnpm lockfile
+├── README.md                 # Project README
+├── tsconfig.json             # TypeScript configuration
+└── vite.config.ts            # Vite build configuration
 ```
 
 ## Code Style & Conventions
@@ -113,20 +151,55 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 ### File Organization
 
-1. Routes go in `src/routes/` (file-based routing)
+1. **Routes** go in `src/routes/` (file-based routing)
    - API routes: Prefix with `api.` (e.g., `api.upload.ts`)
-   - Dynamic routes: Use `$` prefix for parameters (e.g., `$year.tsx`)
-2. Reusable components in `src/components/`
-3. UI primitives in `src/components/ui/` (Shadcn components)
-4. Utilities in `src/lib/`
-   - `utils.ts` - Tailwind helper functions
-   - `pdf-parser.ts` - Bank statement PDF parsing
-5. Integration wrappers in `src/integrations/`
-   - `convex/` - Convex backend provider
-   - `tanstack-query/` - Query client setup
-6. Static assets in `public/`
-7. Example files in `example/` (for testing, not deployed)
-8. Convex backend in `convex/` (separate from src/)
+   - Dynamic routes: Use `$` prefix for parameters (e.g., `$year.tsx`, `$yearMonth.tsx`)
+   - Nested routes: Use subdirectories (e.g., `m/$yearMonth.tsx` → `/m/2024-01`)
+   - Root layout: `__root.tsx` wraps all routes
+
+2. **Reusable components** in `src/components/`
+   - `Header.tsx` - Main navigation component
+   - Future components go here
+
+3. **UI primitives** in `src/components/ui/` (Shadcn components)
+   - All installed via `pnpx shadcn@latest add [component]`
+   - Built on Radix UI primitives
+   - 7 components currently: button, input, label, select, slider, switch, textarea
+
+4. **Utilities** in `src/lib/`
+   - `utils.ts` - Tailwind cn() helper for class merging
+   - `pdf-parser.ts` - Bank statement PDF parsing (NAB format)
+   - `csv-parser.ts` - CSV expense parsing (Google Sheets, NAB exports)
+   - `categories.ts` - Expense category definitions (13 categories)
+   - `normalize-merchant.ts` - Client-side merchant normalization
+
+5. **Integration wrappers** in `src/integrations/`
+   - `convex/provider.tsx` - Convex backend provider
+   - `tanstack-query/root-provider.tsx` - React Query client setup
+   - `tanstack-query/devtools.tsx` - React Query devtools
+
+6. **Static assets** in `public/` (served at root path)
+   - `styles.css` - Global Tailwind CSS (imported in __root.tsx)
+   - `manifest.json` - PWA manifest
+   - `favicon.ico`, `logo192.png`, `logo512.png` - Icons
+   - `logo.svg` - TanStack logo
+   - `robots.txt` - SEO robots file
+
+7. **Convex backend** in `convex/` (separate from src/)
+   - `schema.ts` - Database schema (4 tables: expenses, uploads, merchantMappings, personalMappings)
+   - `expenses.ts` - Expense queries, mutations, and actions
+   - `categorization.ts` - AI categorization logic (OpenRouter + Groq)
+   - `utils.ts` - Server-side merchant normalization (80+ known merchants)
+   - `_generated/` - Auto-generated types (DO NOT EDIT)
+
+8. **Configuration files** (root directory)
+   - `vite.config.ts` - Vite build config with TanStack Start plugin
+   - `tsconfig.json` - TypeScript config with path aliases
+   - `biome.json` - Formatter/linter config (tabs, double quotes)
+   - `components.json` - Shadcn/UI config
+   - `netlify.toml` - Netlify deployment config
+   - `package.json` - Dependencies and scripts
+   - `.env.local` - Local environment variables (gitignored)
 
 ## Routing System
 
@@ -134,10 +207,11 @@ This file provides comprehensive guidance for AI assistants working on the Splic
 
 Routes are automatically generated from files in `src/routes/`:
 
-- `index.tsx` → `/` (home page with PDF upload)
-- `year/$year.tsx` → `/year/2024` (dynamic year route for expenses)
-- `api.upload.ts` → `/api/upload` (file upload endpoint)
-- `__root.tsx` → Layout wrapper for all routes
+- `index.tsx` → `/` (home page with PDF/CSV upload)
+- `$year.tsx` → `/2024` (year summary with monthly aggregates and comparisons)
+- `m/$yearMonth.tsx` → `/m/2024-01` (compact month view)
+- `api.upload.ts` → `/api/upload` (POST endpoint for multi-file upload)
+- `__root.tsx` → Layout wrapper for all routes (providers, header, devtools)
 
 ### Route File Structure
 
@@ -174,15 +248,32 @@ Use `<Link>` component from TanStack Router:
 ```typescript
 import { Link } from '@tanstack/react-router'
 
+// Home page
 <Link to="/">Home</Link>
-<Link to="/year/2024" activeProps={{ className: 'active' }}>
-  2024 Expenses
+
+// Year summary
+<Link to="/$year" params={{ year: '2024' }}>
+  2024 Summary
 </Link>
-// Dynamic year parameter
-<Link to="/year/$year" params={{ year: '2025' }}>
-  2025 Expenses
+
+// Compact month view
+<Link to="/m/$yearMonth" params={{ yearMonth: '2024-01' }}>
+  Jan 2024
+</Link>
+
+// With active styling
+<Link
+  to="/$year"
+  params={{ year: '2024' }}
+  activeProps={{ className: 'text-cyan-400' }}
+>
+  2024
 </Link>
 ```
+
+**Route Parameters:**
+- `$year` - 4-digit year string (e.g., "2024", "2025")
+- `$yearMonth` - Combined year-month format (e.g., "2024-01", "2025-12")
 
 See `src/components/Header.tsx` for navigation examples.
 
@@ -236,8 +327,12 @@ Convex is configured for real-time backend. Provider is in `src/integrations/con
   - `amount` (number) - Transaction amount
   - `date` (string) - Date in YYYY-MM-DD format
   - `checked` (boolean) - User verification status
+  - `split` (optional boolean) - Whether expense is split (50/50) or individual (100%), defaults to true
   - `year` (number) - Year for filtering
   - `month` (string) - Month in 2-digit format (01, 02, etc.)
+  - `uploadTimestamp` (optional number) - When expense was added (for unseen tracking)
+  - `category` (optional string) - AI-assigned expense category
+  - `merchantName` (optional string) - Normalized merchant name (e.g., "WOOLWORTHS")
   - Index: `by_expense_id` on `expenseId`
 - `uploads`:
   - `filename` (string) - Uploaded file name
@@ -245,38 +340,100 @@ Convex is configured for real-time backend. Provider is in `src/integrations/con
   - `uploadDate` (number) - Timestamp
   - `status` (string) - "success" or "error"
   - `errorMessage` (optional string) - Error details if failed
+- `merchantMappings`:
+  - `merchantName` (string) - Normalized merchant name (e.g., "WOOLWORTHS")
+  - `category` (string) - Most common category for this merchant
+  - `confidence` (string) - "ai" | "user" | "consensus"
+  - `voteCount` (number) - Number of user confirmations
+  - `categoryVotes` (optional object) - JSON object tracking votes per category
+  - `aiSuggestion` (optional string) - Original AI suggestion
+  - `lastUpdated` (number) - Timestamp
+  - Index: `by_merchant` on `merchantName`
+- `personalMappings`:
+  - `userId` (string) - User ID (or anonymous device ID)
+  - `merchantName` (string) - Normalized merchant name
+  - `category` (string) - User's preferred category for this merchant
+  - `createdAt` (number) - Timestamp
+  - Index: `by_user_merchant` on `userId` and `merchantName`
 
-**Usage:**
+**Common Convex Queries & Mutations:**
+
 ```typescript
-import { useQuery } from 'convex/react'
+import { useQuery, useMutation } from 'convex/react'
 import { api } from '../convex/_generated/api'
 
-const expenses = useQuery(api.expenses.getExpensesByYear, { year: 2024 })
+// Query expenses by year
+const yearData = useQuery(api.expenses.getExpensesByYear, { year: 2024 })
+
+// Get year summary with comparisons
+const summary = useQuery(api.expenses.getYearSummary, {
+  year: 2024,
+  sessionStartTime: Date.now()
+})
+
+// Get month expenses
+const monthData = useQuery(api.expenses.getMonthExpenses, {
+  year: 2024,
+  month: "01"
+})
+
+// Toggle expense checked status
+const toggleExpense = useMutation(api.expenses.toggleExpense)
+await toggleExpense({ expenseId: "abc123" })
+
+// Toggle split status
+const toggleSplit = useMutation(api.expenses.toggleSplit)
+await toggleSplit({ expenseId: "abc123" })
+
+// Toggle all expenses in a month
+const toggleAll = useMutation(api.expenses.toggleAllExpenses)
+await toggleAll({ year: 2024, month: "01", checked: true })
+
+// Add expenses with AI categorization
+const addWithCategories = useAction(api.expenses.addExpensesWithCategories)
+await addWithCategories({
+  expenses: parsedExpenses,
+  userId: 'anonymous'
+})
 ```
 
 ## Form Management
 
 ### File Upload Pattern
 
-The application uses standard HTML form uploads for PDF bank statements:
+The application supports multi-file uploads for both PDF bank statements and CSV expense files:
 
 ```typescript
 // src/routes/api.upload.ts
 export async function POST({ request }: { request: Request }) {
   const formData = await request.formData()
-  const file = formData.get('file') as File
+  const files = formData.getAll('files') as File[]
 
-  if (!file || file.type !== 'application/pdf') {
-    return new Response(JSON.stringify({ error: 'Invalid file' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    })
+  for (const file of files) {
+    const isPDF = file.type === 'application/pdf'
+    const isCSV = file.type === 'text/csv' || file.name.endsWith('.csv')
+
+    if (isPDF) {
+      const buffer = Buffer.from(await file.arrayBuffer())
+      const parseResult = await parsePDF(buffer)
+      // Process PDF expenses...
+    } else if (isCSV) {
+      const text = await file.text()
+      const parseResult = await parseCSV(text, file.name)
+      // Process CSV expenses...
+    }
   }
 
-  // Process file...
-  return Response.json({ success: true, data: processedData })
+  return Response.json({ success: true, files: results })
 }
 ```
+
+**Supported File Types:**
+- **PDF**: Bank statements (NAB format)
+- **CSV**: Expense exports (Google Sheets, NAB CSV exports)
+  - Can extract date from filename if no Date column
+  - Supports section headers for split/individual expenses
+  - Auto-verifies CSV expenses as checked
 
 ### TanStack Form with Zod Validation
 
@@ -479,7 +636,10 @@ API routes can export handlers for: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`
 
 - Prefix client variables with `VITE_`
 - Use `.env.local` for local development (not committed)
-- Convex requires: `VITE_CONVEX_URL`, `CONVEX_DEPLOYMENT`
+- Convex requires:
+  - `VITE_CONVEX_URL` - Convex deployment URL
+  - `CONVEX_DEPLOYMENT` - Convex deployment name
+  - `OPENROUTER_API_KEY` - OpenRouter API key for AI categorization (Convex env var)
 
 ### 6. Error Handling
 
@@ -524,19 +684,36 @@ function Reports() {
 
 ### Adding a Dynamic Route
 
-For routes with parameters (like the year route):
+For routes with parameters:
 
+**Example 1: Year Route**
 ```typescript
-// src/routes/year/$year.tsx
+// src/routes/$year.tsx
 import { createFileRoute } from '@tanstack/react-router'
 
-export const Route = createFileRoute('/year/$year')({
-  component: YearExpenses,
+export const Route = createFileRoute('/$year')({
+  component: YearSummary,
 })
 
-function YearExpenses() {
+function YearSummary() {
   const { year } = Route.useParams()
   return <div>Expenses for {year}</div>
+}
+```
+
+**Example 2: Nested Dynamic Route**
+```typescript
+// src/routes/m/$yearMonth.tsx
+import { createFileRoute } from '@tanstack/react-router'
+
+export const Route = createFileRoute('/m/$yearMonth')({
+  component: MonthView,
+})
+
+function MonthView() {
+  const { yearMonth } = Route.useParams()
+  const [year, month] = yearMonth.split('-')
+  return <div>Month view for {year}-{month}</div>
 }
 ```
 
@@ -588,17 +765,86 @@ export const getMonthlyReport = query({
 })
 ```
 
-### Working with PDF Parser
+### Working with AI Categorization
 
-The application includes a PDF parser in `src/lib/pdf-parser.ts` for extracting transactions from bank statements:
+**Adding Categorization to Upload Flow:**
 
+```typescript
+// In your upload handler (src/routes/api.upload.ts or similar)
+import { api } from '../convex/_generated/api'
+
+// After parsing expenses from PDF/CSV:
+const result = await convex.action(api.expenses.addExpensesWithCategories, {
+  expenses: parseResult.expenses,
+  userId: 'anonymous' // or actual user ID when auth is added
+})
+```
+
+**Updating Categories with User Feedback:**
+
+```typescript
+// When user changes a category
+await convex.action(api.categorization.updateExpenseCategoryWithMapping, {
+  expenseId: expense.expenseId,
+  merchantName: expense.merchantName, // Must be normalized
+  category: 'Groceries',
+  userId: 'anonymous',
+  updateAllFromMerchant: true // Apply to all future expenses from this merchant
+})
+```
+
+**Adding New Merchants to Known List:**
+
+Edit `convex/utils.ts` and add to the `knownMerchants` array:
+
+```typescript
+const knownMerchants = [
+  // ... existing merchants
+  "NEW MERCHANT NAME",
+]
+```
+
+**Testing Merchant Normalization:**
+
+```typescript
+import { normalizeMerchant } from './convex/utils'
+
+console.log(normalizeMerchant("ACME STORE SYDNEY 456"))
+// Should output: "ACME" or "ACME STORE" if multi-word merchant
+```
+
+### Working with PDF & CSV Parsers
+
+The application includes parsers for both PDF and CSV expense files:
+
+**PDF Parser** (`src/lib/pdf-parser.ts`):
 ```typescript
 import { parsePDF } from '@/lib/pdf-parser'
 
 const buffer = await file.arrayBuffer()
-const transactions = await parsePDF(Buffer.from(buffer))
-// Returns array of { date, description, amount }
+const parseResult = await parsePDF(Buffer.from(buffer))
+// Returns { expenses: ParsedExpense[], status: 'success' | 'error', errorMessage?: string }
+// Each expense includes: expenseId, name, amount, date, year, month, checked, split
 ```
+
+**CSV Parser** (`src/lib/csv-parser.ts`):
+```typescript
+import { parseCSV } from '@/lib/csv-parser'
+
+const fileContent = await file.text()
+const parseResult = await parseCSV(fileContent, file.name)
+// Returns { expenses: ParsedExpense[], status: 'success' | 'error', errorMessage?: string }
+// Supports filename-based date extraction and section headers
+```
+
+**Date Formats Supported:**
+- DD/MM/YY and DD/MM/YYYY (Australian)
+- MM/DD/YYYY (US)
+- DD-MMM-YYYY (15-Jan-2024)
+- YYYY-MM-DD (ISO)
+- MMM DD, YYYY (Jan 15, 2024)
+- DD Mon YY (29 Aug 25)
+- ISO 8601 datetime
 
 ## Application Features
 
@@ -606,21 +852,198 @@ const transactions = await parsePDF(Buffer.from(buffer))
 
 The application provides the following core features:
 
-1. **PDF Upload & Parsing**: Upload bank statements in PDF format (NAB bank format supported)
-2. **Automatic Transaction Extraction**: Automatically parse transactions with date, description, and amount
-3. **Year-Based Organization**: View expenses organized by year
-4. **Month Grouping**: Expenses are grouped by month within each year
-5. **Expense Verification**: Mark transactions as checked/verified
-6. **Real-Time Sync**: Changes sync in real-time via Convex
+1. **Multi-File Upload**: Upload multiple PDF and CSV files simultaneously
+2. **PDF Parsing**: Automatic transaction extraction from NAB bank statements
+3. **CSV Parsing**: Support for Google Sheets and NAB CSV exports
+   - Filename-based date extraction
+   - Section-based split/individual expense detection
+   - Flexible column detection (Date, Item, Cost)
+4. **AI-Powered Categorization**: Automatic expense categorization using OpenRouter + Groq
+   - 13 predefined categories
+   - Merchant normalization (80+ known merchants)
+   - Three-tier learning system (personal → global → AI)
+5. **Year-Based Organization**: View expenses organized by year with aggregates
+6. **Month Grouping**: Expenses grouped by month with totals
+7. **Expense Verification**: Mark transactions as checked/verified
+8. **Split Expense Tracking**: Distinguish between split (50/50) and individual (100%) expenses
+9. **Bulk Operations**: Toggle all expenses in a month
+10. **Year-over-Year Comparison**: Track spending trends
+11. **Unseen Expense Tracking**: Visual indicators for new expenses
+12. **Real-Time Sync**: Changes sync in real-time via Convex
 
 ### Supported Bank Statement Formats
 
-Currently supports NAB (National Australia Bank) statement format with:
-- Date formats: DD/MM/YY and DD/MM/YYYY
-- Transaction descriptions
-- Debit amounts (expenses tracked as positive numbers)
+**PDF Formats:**
+- NAB (National Australia Bank) statement format:
+  - Date formats: DD/MM/YY, DD/MM/YYYY, DD Mon YY
+  - Transaction descriptions
+  - Debit amounts (expenses tracked as positive numbers)
+  - Example: `example/0513-20250919-statement.pdf`
 
-Example file: `example/0513-20250919-statement.pdf`
+**CSV Formats:**
+- Google Sheets exports (custom expense tracking)
+- NAB CSV exports (e.g., "August2025Transactions.csv")
+- Generic CSV with columns: Date (optional), Item/Description, Cost/Amount
+- Section-based CSVs (split vs individual expenses)
+- Filename-based date extraction (e.g., "Expenses 2023 - January.csv")
+
+**CSV Section Headers:**
+CSV files can include section headers to categorize expenses:
+- "General expenses" / "Shared" / "Split" → Shared expenses (50/50)
+- "Individual" / "Personal" → Individual expenses (100%)
+
+## AI-Powered Expense Categorization
+
+The application includes an intelligent categorization system using OpenRouter + Groq (free tier) to automatically categorize expenses.
+
+### Architecture
+
+**Three-Tier Categorization System:**
+1. **Personal Mappings** (highest priority) - User-specific overrides
+2. **Global Mappings** (crowd-sourced) - Community consensus categories
+3. **AI Categorization** (fallback) - OpenRouter + Groq API
+
+### Supported Categories
+
+```typescript
+const CATEGORIES = [
+  "Groceries",
+  "Dining & Takeaway",
+  "Transport",
+  "Fuel",
+  "Entertainment",
+  "Shopping",
+  "Bills & Utilities",
+  "Health & Medical",
+  "Home & Garden",
+  "Education",
+  "Travel",
+  "Hobbies",
+  "Other"
+]
+```
+
+### Merchant Normalization
+
+Before categorization, merchant names are normalized using `convex/utils.ts`:
+
+```typescript
+import { normalizeMerchant } from './utils'
+
+// Examples:
+normalizeMerchant("WOOLWORTHS TOWN HALL 123") // → "WOOLWORTHS"
+normalizeMerchant("BP NORTHSIDE") // → "BP"
+normalizeMerchant("NETFLIX.COM") // → "NETFLIX"
+```
+
+**Normalization Process:**
+1. Convert to uppercase
+2. Remove domains (.com, .com.au, etc.)
+3. Remove location codes and transaction IDs
+4. Match against known merchant database (80+ Australian merchants)
+5. Extract first 1-2 significant words
+
+### Convex Functions
+
+**Key categorization functions (convex/categorization.ts):**
+
+- `categorizeMerchantWithAI(merchantName, description)` - Action that calls OpenRouter API
+- `getCategoryForMerchant(merchantName, description, userId)` - Main categorization flow
+- `updateExpenseCategoryWithMapping(expenseId, merchantName, category, userId, updateAllFromMerchant)` - Update category with learning
+- `getGlobalMapping(merchantName)` - Query global merchant mapping
+- `getPersonalMapping(userId, merchantName)` - Query user's personal mapping
+
+### Environment Variables
+
+Required for AI categorization:
+- `OPENROUTER_API_KEY` - OpenRouter API key (set in Convex dashboard)
+
+**Model Used:**
+- `meta-llama/llama-3.2-3b-instruct:free` (Free Groq model via OpenRouter)
+- Temperature: 0.3 (for consistent categorization)
+- Max tokens: 20 (only need category name)
+
+### Usage Example
+
+```typescript
+import { api } from '../convex/_generated/api'
+
+// Automatically categorize expenses during upload
+const result = await ctx.runAction(api.expenses.addExpensesWithCategories, {
+  expenses: parsedExpenses,
+  userId: 'anonymous' // or actual user ID
+})
+
+// Update category with user feedback
+await ctx.runAction(api.categorization.updateExpenseCategoryWithMapping, {
+  expenseId: expense.expenseId,
+  merchantName: expense.merchantName,
+  category: 'Groceries',
+  userId: 'anonymous',
+  updateAllFromMerchant: true // Create personal override
+})
+```
+
+### Learning System
+
+The categorization system improves over time:
+1. **AI First Use**: First time seeing a merchant, AI categorizes it
+2. **Global Learning**: AI suggestion stored in `merchantMappings` table
+3. **User Feedback**: When users change categories, system votes on better category
+4. **Personal Overrides**: Users can set permanent overrides for specific merchants
+5. **Consensus Building**: Multiple user votes update global mappings
+
+## Advanced Features
+
+### Split vs Individual Expenses
+
+Expenses can be marked as:
+- **Split (50/50)**: Default for PDF uploads and "Shared" CSV sections
+- **Individual (100%)**: For personal expenses from "Individual" CSV sections
+
+Toggle split status with `toggleSplit` mutation:
+
+```typescript
+await convex.mutation(api.expenses.toggleSplit, {
+  expenseId: expense.expenseId
+})
+```
+
+### Toggle All Expenses
+
+Bulk check/uncheck all expenses in a month:
+
+```typescript
+await convex.mutation(api.expenses.toggleAllExpenses, {
+  year: 2024,
+  month: "01",
+  checked: true
+})
+```
+
+### Year Summary & Comparisons
+
+The `getYearSummary` query provides:
+- Total shared expenses for the year
+- Average per month
+- Year-over-year comparison (increase/decrease)
+- All 12 months with data (even if zero)
+- Unseen expense tracking (green dot indicators)
+
+```typescript
+const summary = useQuery(api.expenses.getYearSummary, {
+  year: 2024,
+  sessionStartTime: Date.now() // For tracking unseen expenses
+})
+```
+
+### Unseen Expense Tracking
+
+New expenses uploaded during a session are tracked:
+- `uploadTimestamp` field stores when expense was added
+- `sessionStartTime` parameter tracks user's session start
+- Green dot indicators on months with new expenses
+- Cleared when user visits that month
 
 ## Important Notes for AI Assistants
 
@@ -651,11 +1074,33 @@ Example file: `example/0513-20250919-statement.pdf`
 
 ### Application-Specific Guidelines
 
-1. **PDF Processing**: Always validate PDF files before parsing
-2. **Transaction Deduplication**: Use `expenseId` to prevent duplicate entries
+1. **File Processing**:
+   - Validate PDF and CSV files before parsing
+   - Support multi-file uploads
+   - Handle both PDF and CSV parsing errors gracefully
+2. **Transaction Deduplication**: Use `expenseId` (hash of name+amount+date) to prevent duplicate entries
 3. **Date Handling**: Store dates in YYYY-MM-DD format for consistency
 4. **Error Handling**: Track upload errors in the `uploads` table for debugging
 5. **Year/Month Filtering**: Always filter by year first, then month for performance
+6. **AI Categorization**:
+   - Always normalize merchant names before categorization
+   - Check personal mappings before global mappings
+   - Fall back to AI only when no mapping exists
+   - Store AI results in global mappings for future use
+7. **Split Expense Tracking**:
+   - Default PDF expenses to split=true (50/50)
+   - Respect CSV section headers for split vs individual
+   - CSV "Shared" sections → split=true
+   - CSV "Individual" sections → split=false
+8. **CSV Parsing**:
+   - Extract date from filename if no Date column
+   - Support flexible column names (Item, Description, Merchant Name, etc.)
+   - Auto-verify CSV expenses as checked=true
+   - Handle section headers for expense categorization
+9. **Merchant Normalization**:
+   - Use `convex/utils.ts` normalizeMerchant() function
+   - Maintain known merchant database in utils.ts
+   - Normalize before storing in merchantName field
 
 ### Debugging
 
@@ -677,7 +1122,7 @@ Example file: `example/0513-20250919-statement.pdf`
 
 ## Version Information
 
-**Last updated**: 2025-11-15
+**Last updated**: 2025-11-16
 **Node version**: Compatible with Vite 7.2.2 (Node 18+)
 **Package manager**: pnpm
 **TypeScript**: 5.9.3
@@ -686,8 +1131,40 @@ Example file: `example/0513-20250919-statement.pdf`
 
 ### Recent Changes
 
+**November 2025:**
+- **AI-Powered Categorization**: Integrated OpenRouter + Groq for automatic expense categorization
+  - Three-tier categorization system (personal → global → AI)
+  - 13 predefined expense categories
+  - Merchant normalization with 80+ known merchants
+  - Learning system with user feedback and consensus building
+- **CSV Parsing**: Full CSV support for expense imports
+  - Google Sheets exports
+  - NAB CSV exports (e.g., "August2025Transactions.csv")
+  - Filename-based date extraction
+  - Section header detection for split/individual expenses
+  - Flexible column detection
+- **Split Expense Tracking**: Track split (50/50) vs individual (100%) expenses
+  - Section-based detection in CSVs
+  - Toggle split status per expense
+- **Multi-File Upload**: Upload multiple PDF and CSV files simultaneously
+- **Year Summary & Comparisons**: Year-over-year spending analysis
+  - Total shared expenses
+  - Average per month
+  - Year-over-year comparison indicators
+  - All 12 months with data (even if zero)
+- **Bulk Operations**: Toggle all expenses in a month
+- **Unseen Expense Tracking**: Visual indicators for new expenses uploaded during session
+- **Enhanced Routing**:
+  - `/$year` route for year summaries with aggregates
+  - `/m/$yearMonth` for compact month views
+- **Database Schema Enhancements**:
+  - Added `split`, `category`, `merchantName`, `uploadTimestamp` fields to expenses
+  - New `merchantMappings` table for global categorization
+  - New `personalMappings` table for user-specific overrides
+
+**Previous Changes:**
 - Removed all demo routes and components
 - Implemented expense tracking functionality
 - Added PDF parser for bank statements (NAB format)
 - Created year-based expense routing
-- Updated to latest dependency versions (Nov 2025)
+- Updated to latest dependency versions
