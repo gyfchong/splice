@@ -100,17 +100,6 @@ function HomePage() {
 							totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
 						}`,
 					});
-
-					// Navigate to the earliest new month if we added expenses
-					if (earliestNewMonth) {
-						const targetYear = earliestNewMonth.year;
-						setTimeout(() => {
-							navigate({
-								to: "/year/$year",
-								params: { year: targetYear.toString() },
-							});
-						}, 1500);
-					}
 				}
 			} catch (error) {
 				setUploadStatus({
