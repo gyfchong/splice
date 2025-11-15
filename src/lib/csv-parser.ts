@@ -131,7 +131,6 @@ function extractDateFromFilename(filename: string): {
 		february: "02",
 		march: "03",
 		april: "04",
-		may: "05",
 		june: "06",
 		july: "07",
 		august: "08",
