@@ -144,11 +144,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 			}
 
 			const [year, month] = parsedDate.split("-");
-			const expenseId = generateExpenseId(
-				description,
-				amount,
-				parsedDate,
-			);
+			const expenseId = generateExpenseId(description, amount, parsedDate);
 
 			expenses.push({
 				expenseId,
@@ -222,10 +218,7 @@ export async function parsePDF(buffer: Buffer): Promise<ParseResult> {
 		);
 
 		// Log first 500 chars for debugging
-		console.log(
-			"[PDF Parser] First 500 chars:",
-			result.text.substring(0, 500),
-		);
+		console.log("[PDF Parser] First 500 chars:", result.text.substring(0, 500));
 
 		const expenses = extractExpenses(result.text);
 
