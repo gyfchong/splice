@@ -97,6 +97,16 @@ function parseDate(dateStr: string): string | null {
 		return `${year}-${month}-${day.padStart(2, "0")}`;
 	}
 
+	// DD Mon YY (e.g., 29 Aug 25)
+	match = dateStr.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})$/);
+	if (match) {
+		let [, day, monthName, year] = match;
+		const month = monthMap[monthName.toLowerCase()] || "01";
+		// Convert 2-digit year to 4-digit (assume 2000s)
+		year = `20${year}`;
+		return `${year}-${month}-${day.padStart(2, "0")}`;
+	}
+
 	return null;
 }
 

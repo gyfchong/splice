@@ -97,6 +97,16 @@ function parseDate(dateStr: string): string | null {
 		return `${year}-${month}-${day.padStart(2, "0")}`;
 	}
 
+	// DD Mon YY (e.g., 29 Aug 25)
+	match = dateStr.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})$/);
+	if (match) {
+		let [, day, monthName, year] = match;
+		const month = monthMap[monthName.toLowerCase()] || "01";
+		// Convert 2-digit year to 4-digit (assume 2000s)
+		year = `20${year}`;
+		return `${year}-${month}-${day.padStart(2, "0")}`;
+	}
+
 	// ISO 8601 datetime (e.g., 2024-01-15T00:00:00)
 	match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T/);
 	if (match) {
@@ -165,6 +175,7 @@ function extractDateFromFilename(filename: string): {
 function detectColumns(headers: string[]): {
 	date: number;
 	description: number;
+	descriptionFallback: number;
 	amount: number;
 	hasDateColumn: boolean;
 } | null {
@@ -175,9 +186,15 @@ function detectColumns(headers: string[]): {
 		["date", "transaction date", "posted date", "date posted"].includes(h),
 	);
 
-	// Look for description column (including "item")
+	// Look for primary description column (prefer merchant name)
 	const descriptionIndex = normalizedHeaders.findIndex((h) =>
+		["merchant name"].includes(h),
+	);
+
+	// Look for fallback description column (transaction details, description, etc.)
+	const descriptionFallbackIndex = normalizedHeaders.findIndex((h) =>
 		[
+			"transaction details",
 			"description",
 			"merchant",
 			"name",
@@ -193,14 +210,19 @@ function detectColumns(headers: string[]): {
 		["amount", "debit", "withdrawal", "charge", "total", "cost"].includes(h),
 	);
 
-	// Require description and amount columns (date is optional)
-	if (descriptionIndex === -1 || amountIndex === -1) {
+	// Require at least one description column and amount column (date is optional)
+	if (
+		(descriptionIndex === -1 && descriptionFallbackIndex === -1) ||
+		amountIndex === -1
+	) {
 		return null;
 	}
 
 	return {
 		date: dateIndex,
-		description: descriptionIndex,
+		description:
+			descriptionIndex !== -1 ? descriptionIndex : descriptionFallbackIndex,
+		descriptionFallback: descriptionFallbackIndex,
 		amount: amountIndex,
 		hasDateColumn: dateIndex !== -1,
 	};
@@ -252,7 +274,15 @@ function findHeaderRow(rows: string[][]): number {
 		// Check if this row looks like a header
 		if (
 			normalizedRow.some((h) =>
-				["item", "description", "name", "merchant", "date"].includes(h),
+				[
+					"item",
+					"description",
+					"name",
+					"merchant",
+					"merchant name",
+					"transaction details",
+					"date",
+				].includes(h),
 			) &&
 			normalizedRow.some((h) =>
 				["cost", "amount", "total", "charge"].includes(h),
@@ -348,7 +378,16 @@ export async function parseCSV(
 				continue;
 			}
 
-			const description = row[columns.description]?.trim();
+			// Get description, with fallback to secondary column if primary is empty
+			let description = row[columns.description]?.trim();
+			if (
+				!description &&
+				columns.descriptionFallback !== -1 &&
+				columns.descriptionFallback !== columns.description
+			) {
+				description = row[columns.descriptionFallback]?.trim();
+			}
+
 			const amountStr = row[columns.amount]?.trim();
 
 			// Skip if required fields are missing
