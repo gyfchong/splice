@@ -111,6 +111,7 @@ export const addExpenses = mutation({
 				await ctx.db.insert("expenses", {
 					...expense,
 					checked: false,
+					uploadTimestamp: Date.now(),
 				})
 				newExpenseIds.push(expense.expenseId)
 			} else {
@@ -147,5 +148,150 @@ export const getUploads = query({
 	args: {},
 	handler: async (ctx) => {
 		return await ctx.db.query("uploads").order("desc").take(50)
+	},
+})
+
+// Get year summary with monthly aggregates (all 12 months)
+export const getYearSummary = query({
+	args: {
+		year: v.number(),
+		sessionStartTime: v.optional(v.number()), // For tracking unseen expenses
+	},
+	handler: async (ctx, args) => {
+		const expenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.eq(q.field("year"), args.year))
+			.collect()
+
+		// Get previous year data for comparison
+		const previousYearExpenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.eq(q.field("year"), args.year - 1))
+			.collect()
+
+		// Create all 12 months with data
+		const monthNames = [
+			"January",
+			"February",
+			"March",
+			"April",
+			"May",
+			"June",
+			"July",
+			"August",
+			"September",
+			"October",
+			"November",
+			"December",
+		]
+
+		const months = monthNames.map((monthName, index) => {
+			const monthNum = (index + 1).toString().padStart(2, "0")
+			const monthExpenses = expenses.filter((e) => e.month === monthNum)
+
+			// Calculate amount shared (checked expenses / 2)
+			const amountShared =
+				monthExpenses
+					.filter((e) => e.checked)
+					.reduce((sum, e) => sum + e.amount, 0) / 2
+
+			// Check if there are unseen expenses
+			const hasUnseen = args.sessionStartTime
+				? monthExpenses.some(
+						(e) =>
+							e.uploadTimestamp &&
+							e.uploadTimestamp > (args.sessionStartTime ?? 0),
+					)
+				: false
+
+			return {
+				month: monthName,
+				monthNumber: monthNum,
+				amountShared: Math.round(amountShared * 100) / 100,
+				numberOfExpenses: monthExpenses.length,
+				showGreenDot: hasUnseen,
+			}
+		})
+
+		// Calculate yearly totals
+		const totalShared = months.reduce((sum, m) => sum + m.amountShared, 0)
+		const averagePerMonth = Math.round((totalShared / 12) * 100) / 100
+
+		// Calculate previous year total for comparison
+		const previousYearTotal =
+			previousYearExpenses
+				.filter((e) => e.checked)
+				.reduce((sum, e) => sum + e.amount, 0) / 2
+
+		let changeComparedToPreviousYear:
+			| { direction: string; icon: string; color: string }
+			| undefined
+		if (previousYearTotal > 0) {
+			if (totalShared > previousYearTotal) {
+				changeComparedToPreviousYear = {
+					direction: "increase",
+					icon: "up",
+					color: "green",
+				}
+			} else if (totalShared < previousYearTotal) {
+				changeComparedToPreviousYear = {
+					direction: "decrease",
+					icon: "down",
+					color: "red",
+				}
+			} else {
+				changeComparedToPreviousYear = {
+					direction: "none",
+					icon: "neutral",
+					color: "gray",
+				}
+			}
+		} else {
+			changeComparedToPreviousYear = {
+				direction: "none",
+				icon: "neutral",
+				color: "gray",
+			}
+		}
+
+		return {
+			year: args.year,
+			totalShared: Math.round(totalShared * 100) / 100,
+			averagePerMonth,
+			changeComparedToPreviousYear,
+			months,
+			error: null,
+		}
+	},
+})
+
+// Get expenses for a specific month
+export const getMonthExpenses = query({
+	args: {
+		year: v.number(),
+		month: v.string(), // 2-digit format: "01", "02", etc.
+	},
+	handler: async (ctx, args) => {
+		const expenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.eq(q.field("year"), args.year))
+			.filter((q) => q.eq(q.field("month"), args.month))
+			.collect()
+
+		// Sort by date
+		const sortedExpenses = expenses.sort((a, b) => a.date.localeCompare(b.date))
+
+		// Calculate total share
+		const totalShare =
+			sortedExpenses
+				.filter((e) => e.checked)
+				.reduce((sum, e) => sum + e.amount, 0) / 2
+
+		return {
+			year: args.year,
+			month: args.month,
+			expenses: sortedExpenses,
+			totalShare: Math.round(totalShare * 100) / 100,
+		}
 	},
 })

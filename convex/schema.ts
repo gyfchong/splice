@@ -10,6 +10,7 @@ export default defineSchema({
 		checked: v.boolean(),
 		year: v.number(),
 		month: v.string(), // 2-digit format: "01", "02", etc.
+		uploadTimestamp: v.optional(v.number()), // When expense was added (for unseen tracking)
 	}).index("by_expense_id", ["expenseId"]),
 	uploads: defineTable({
 		filename: v.string(),
