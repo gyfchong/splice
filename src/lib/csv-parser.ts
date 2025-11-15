@@ -7,6 +7,7 @@ export interface ParsedExpense {
 	date: string; // YYYY-MM-DD
 	year: number;
 	month: string; // 2-digit format
+	checked: boolean;
 }
 
 export interface ParseResult {
@@ -398,6 +399,7 @@ export async function parseCSV(
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
+				checked: true, // CSV expenses are pre-verified shared expenses
 			});
 		}
 

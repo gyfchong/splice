@@ -7,6 +7,7 @@ export interface ParsedExpense {
 	date: string; // YYYY-MM-DD
 	year: number;
 	month: string; // 2-digit format
+	checked: boolean;
 }
 
 export interface ParseResult {
@@ -153,6 +154,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
+				checked: false, // PDF expenses need manual verification
 			});
 			continue;
 		}
@@ -197,6 +199,7 @@ function extractExpenses(text: string): ParsedExpense[] {
 				date: parsedDate,
 				year: Number.parseInt(year, 10),
 				month,
+				checked: false, // PDF expenses need manual verification
 			});
 		}
 	}
