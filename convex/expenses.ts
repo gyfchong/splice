@@ -82,6 +82,65 @@ export const toggleExpense = mutation({
 	},
 })
 
+// Toggle all expenses in a month
+export const toggleAllExpenses = mutation({
+	args: {
+		year: v.number(),
+		month: v.string(),
+		checked: v.boolean(),
+	},
+	handler: async (ctx, args) => {
+		const expenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.eq(q.field("year"), args.year))
+			.filter((q) => q.eq(q.field("month"), args.month))
+			.collect()
+
+		for (const expense of expenses) {
+			await ctx.db.patch(expense._id, {
+				checked: args.checked,
+			})
+		}
+
+		return {
+			updatedCount: expenses.length,
+			checked: args.checked,
+			result: "success" as const,
+		}
+	},
+})
+
+// Toggle expense split status
+export const toggleSplit = mutation({
+	args: {
+		expenseId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error("Expense not found")
+		}
+
+		// Default to true (split) if undefined for backward compatibility
+		const currentSplit = expense.split ?? true
+		const newSplit = !currentSplit
+
+		await ctx.db.patch(expense._id, {
+			split: newSplit,
+		})
+
+		return {
+			expenseId: args.expenseId,
+			newSplitStatus: newSplit,
+			result: "success" as const,
+		}
+	},
+})
+
 // Add new expenses (with deduplication)
 export const addExpenses = mutation({
 	args: {
@@ -93,6 +152,7 @@ export const addExpenses = mutation({
 				date: v.string(),
 				year: v.number(),
 				month: v.string(),
+				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
 			}),
 		),
 	},
@@ -110,7 +170,8 @@ export const addExpenses = mutation({
 			if (!existing) {
 				await ctx.db.insert("expenses", {
 					...expense,
-					checked: false,
+					checked: expense.checked ?? false, // Use provided value or default to false
+					split: true, // Default to split (50/50)
 					uploadTimestamp: Date.now(),
 				})
 				newExpenseIds.push(expense.expenseId)

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Calendar, ChevronLeft, User, Users } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
@@ -19,6 +19,7 @@ function MonthPage() {
 	});
 	const toggleExpense = useMutation(api.expenses.toggleExpense);
 	const toggleSplit = useMutation(api.expenses.toggleSplit);
+	const toggleAllExpenses = useMutation(api.expenses.toggleAllExpenses);
 
 	// Mark this month as visited when component mounts
 	useEffect(() => {
@@ -45,6 +46,24 @@ function MonthPage() {
 			await toggleSplit({ expenseId });
 		} catch (error) {
 			console.error("Failed to toggle split:", error);
+		}
+	};
+
+	// Check if all expenses are checked
+	const allChecked = useMemo(() => {
+		if (!data || data.expenses.length === 0) return false;
+		return data.expenses.every((expense) => expense.checked);
+	}, [data]);
+
+	const handleToggleAll = async () => {
+		try {
+			await toggleAllExpenses({
+				year: yearNum,
+				month,
+				checked: !allChecked,
+			});
+		} catch (error) {
+			console.error("Failed to toggle all expenses:", error);
 		}
 	};
 
@@ -123,6 +142,21 @@ function MonthPage() {
 									{formatCurrency(data.totalShare)}
 								</div>
 							</div>
+						</div>
+
+						{/* Check All */}
+						<div className="mb-4 pb-3 border-b border-slate-600/50">
+							<label className="flex items-center gap-3 cursor-pointer group">
+								<input
+									type="checkbox"
+									checked={allChecked}
+									onChange={handleToggleAll}
+									className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
+								/>
+								<span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">
+									{allChecked ? "Uncheck all" : "Check all"}
+								</span>
+							</label>
 						</div>
 
 						{/* Expenses List */}
