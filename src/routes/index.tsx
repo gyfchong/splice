@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery, useMutation } from "convex/react";
-import { Upload, Calendar } from "lucide-react";
-import { useState, useCallback } from "react";
-import { api } from "../../convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
+import { Calendar, Upload } from "lucide-react";
+import { useCallback, useState } from "react";
 import type { ParsedExpense } from "@/lib/pdf-parser";
+import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
@@ -19,107 +19,110 @@ function HomePage() {
 		message: string;
 	} | null>(null);
 
-	const handleFiles = useCallback(async (files: File[]) => {
-		setIsUploading(true);
-		setUploadStatus(null);
+	const handleFiles = useCallback(
+		async (files: File[]) => {
+			setIsUploading(true);
+			setUploadStatus(null);
 
-		try {
-			// Upload files to API for parsing
-			const formData = new FormData();
-			for (const file of files) {
-				formData.append("files", file);
-			}
+			try {
+				// Upload files to API for parsing
+				const formData = new FormData();
+				for (const file of files) {
+					formData.append("files", file);
+				}
 
-			const response = await fetch("/api/upload", {
-				method: "POST",
-				body: formData,
-			});
-
-			const result = await response.json();
-
-			if (result.status === "error") {
-				setUploadStatus({
-					type: "error",
-					message: result.errorMessage || "Upload failed",
-				});
-				return;
-			}
-
-			// Process each file result
-			let totalExpenses = 0;
-			let totalErrors = 0;
-			let earliestNewMonth: { year: number; month: string } | null = null;
-
-			for (const fileResult of result.files) {
-				// Record upload metadata
-				await recordUpload({
-					filename: fileResult.filename,
-					size: fileResult.size,
-					status: fileResult.status,
-					errorMessage: fileResult.errorMessage,
+				const response = await fetch("/api/upload", {
+					method: "POST",
+					body: formData,
 				});
 
-				if (fileResult.status === "success" && fileResult.expenses) {
-					const expenses = fileResult.expenses as ParsedExpense[];
+				const result = await response.json();
 
-					// Add expenses to Convex
-					const addResult = await addExpenses({ expenses });
-					totalExpenses += addResult.addedCount;
+				if (result.status === "error") {
+					setUploadStatus({
+						type: "error",
+						message: result.errorMessage || "Upload failed",
+					});
+					return;
+				}
 
-					// Track earliest new month
-					if (addResult.addedCount > 0) {
-						for (const expense of expenses) {
-							if (
-								!earliestNewMonth ||
-								expense.year < earliestNewMonth.year ||
-								(expense.year === earliestNewMonth.year &&
-									expense.month < earliestNewMonth.month)
-							) {
-								earliestNewMonth = {
-									year: expense.year,
-									month: expense.month,
-								};
+				// Process each file result
+				let totalExpenses = 0;
+				let totalErrors = 0;
+				let earliestNewMonth: { year: number; month: string } | null = null;
+
+				for (const fileResult of result.files) {
+					// Record upload metadata
+					await recordUpload({
+						filename: fileResult.filename,
+						size: fileResult.size,
+						status: fileResult.status,
+						errorMessage: fileResult.errorMessage,
+					});
+
+					if (fileResult.status === "success" && fileResult.expenses) {
+						const expenses = fileResult.expenses as ParsedExpense[];
+
+						// Add expenses to Convex
+						const addResult = await addExpenses({ expenses });
+						totalExpenses += addResult.addedCount;
+
+						// Track earliest new month
+						if (addResult.addedCount > 0) {
+							for (const expense of expenses) {
+								if (
+									!earliestNewMonth ||
+									expense.year < earliestNewMonth.year ||
+									(expense.year === earliestNewMonth.year &&
+										expense.month < earliestNewMonth.month)
+								) {
+									earliestNewMonth = {
+										year: expense.year,
+										month: expense.month,
+									};
+								}
 							}
 						}
+					} else {
+						totalErrors++;
 					}
-				} else {
-					totalErrors++;
 				}
-			}
 
-			if (totalErrors > 0 && totalExpenses === 0) {
+				if (totalErrors > 0 && totalExpenses === 0) {
+					setUploadStatus({
+						type: "error",
+						message: `Failed to parse ${totalErrors} file(s)`,
+					});
+				} else {
+					setUploadStatus({
+						type: "success",
+						message: `Successfully added ${totalExpenses} expense(s)${
+							totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
+						}`,
+					});
+
+					// Navigate to the earliest new month if we added expenses
+					if (earliestNewMonth) {
+						const targetYear = earliestNewMonth.year;
+						setTimeout(() => {
+							navigate({
+								to: "/year/$year",
+								params: { year: targetYear.toString() },
+							});
+						}, 1500);
+					}
+				}
+			} catch (error) {
 				setUploadStatus({
 					type: "error",
-					message: `Failed to parse ${totalErrors} file(s)`,
+					message: error instanceof Error ? error.message : "Upload failed",
 				});
-			} else {
-				setUploadStatus({
-					type: "success",
-					message: `Successfully added ${totalExpenses} expense(s)${
-						totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
-					}`,
-				});
-
-				// Navigate to the earliest new month if we added expenses
-				if (earliestNewMonth) {
-					const targetYear = earliestNewMonth.year;
-					setTimeout(() => {
-						navigate({
-							to: "/year/$year",
-							params: { year: targetYear.toString() },
-						});
-					}, 1500);
-				}
+			} finally {
+				setIsUploading(false);
 			}
-		} catch (error) {
-			setUploadStatus({
-				type: "error",
-				message: error instanceof Error ? error.message : "Upload failed",
-			});
-		} finally {
-			setIsUploading(false);
-		}
-	}, [addExpenses, recordUpload, navigate]);
+		},
+		[addExpenses, recordUpload, navigate],
+	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
 		e.preventDefault();
@@ -131,28 +134,31 @@ function HomePage() {
 		setIsDragging(false);
 	}, []);
 
-	const handleDrop = useCallback(async (e: React.DragEvent) => {
-		e.preventDefault();
-		setIsDragging(false);
+	const handleDrop = useCallback(
+		async (e: React.DragEvent) => {
+			e.preventDefault();
+			setIsDragging(false);
 
-		const files = Array.from(e.dataTransfer.files).filter(
-			(file) =>
-				file.type === "application/pdf" ||
-				file.type === "text/csv" ||
-				file.type === "application/csv" ||
-				file.name.endsWith(".csv"),
-		);
+			const files = Array.from(e.dataTransfer.files).filter(
+				(file) =>
+					file.type === "application/pdf" ||
+					file.type === "text/csv" ||
+					file.type === "application/csv" ||
+					file.name.endsWith(".csv"),
+			);
 
-		if (files.length === 0) {
-			setUploadStatus({
-				type: "error",
-				message: "Please upload only PDF or CSV files",
-			});
-			return;
-		}
+			if (files.length === 0) {
+				setUploadStatus({
+					type: "error",
+					message: "Please upload only PDF or CSV files",
+				});
+				return;
+			}
 
-		await handleFiles(files);
-	}, [handleFiles]);
+			await handleFiles(files);
+		},
+		[handleFiles],
+	);
 
 	const handleFileInput = useCallback(
 		async (e: React.ChangeEvent<HTMLInputElement>) => {
