@@ -1,118 +1,271 @@
-import { createFileRoute } from '@tanstack/react-router'
-import {
-  Zap,
-  Server,
-  Route as RouteIcon,
-  Shield,
-  Waves,
-  Sparkles,
-} from 'lucide-react'
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQuery, useMutation } from "convex/react";
+import { Upload, Calendar } from "lucide-react";
+import { useState, useCallback } from "react";
+import { api } from "../../convex/_generated/api";
+import type { ParsedExpense } from "@/lib/pdf-parser";
 
-export const Route = createFileRoute('/')({ component: App })
+export const Route = createFileRoute("/")({ component: HomePage });
 
-function App() {
-  const features = [
-    {
-      icon: <Zap className="w-12 h-12 text-cyan-400" />,
-      title: 'Powerful Server Functions',
-      description:
-        'Write server-side code that seamlessly integrates with your client components. Type-safe, secure, and simple.',
-    },
-    {
-      icon: <Server className="w-12 h-12 text-cyan-400" />,
-      title: 'Flexible Server Side Rendering',
-      description:
-        'Full-document SSR, streaming, and progressive enhancement out of the box. Control exactly what renders where.',
-    },
-    {
-      icon: <RouteIcon className="w-12 h-12 text-cyan-400" />,
-      title: 'API Routes',
-      description:
-        'Build type-safe API endpoints alongside your application. No separate backend needed.',
-    },
-    {
-      icon: <Shield className="w-12 h-12 text-cyan-400" />,
-      title: 'Strongly Typed Everything',
-      description:
-        'End-to-end type safety from server to client. Catch errors before they reach production.',
-    },
-    {
-      icon: <Waves className="w-12 h-12 text-cyan-400" />,
-      title: 'Full Streaming Support',
-      description:
-        'Stream data from server to client progressively. Perfect for AI applications and real-time updates.',
-    },
-    {
-      icon: <Sparkles className="w-12 h-12 text-cyan-400" />,
-      title: 'Next Generation Ready',
-      description:
-        'Built from the ground up for modern web applications. Deploy anywhere JavaScript runs.',
-    },
-  ]
+function HomePage() {
+	const years = useQuery(api.expenses.getYears);
+	const addExpenses = useMutation(api.expenses.addExpenses);
+	const recordUpload = useMutation(api.expenses.recordUpload);
+	const navigate = useNavigate();
+	const [isDragging, setIsDragging] = useState(false);
+	const [isUploading, setIsUploading] = useState(false);
+	const [uploadStatus, setUploadStatus] = useState<{
+		type: "success" | "error";
+		message: string;
+	} | null>(null);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
-      <section className="relative py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-blue-500/10 to-purple-500/10"></div>
-        <div className="relative max-w-5xl mx-auto">
-          <div className="flex items-center justify-center gap-6 mb-6">
-            <img
-              src="/tanstack-circle-logo.png"
-              alt="TanStack Logo"
-              className="w-24 h-24 md:w-32 md:h-32"
-            />
-            <h1 className="text-6xl md:text-7xl font-black text-white [letter-spacing:-0.08em]">
-              <span className="text-gray-300">TANSTACK</span>{' '}
-              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
-                START
-              </span>
-            </h1>
-          </div>
-          <p className="text-2xl md:text-3xl text-gray-300 mb-4 font-light">
-            The framework for next generation AI applications
-          </p>
-          <p className="text-lg text-gray-400 max-w-3xl mx-auto mb-8">
-            Full-stack framework powered by TanStack Router for React and Solid.
-            Build modern applications with server functions, streaming, and type
-            safety.
-          </p>
-          <div className="flex flex-col items-center gap-4">
-            <a
-              href="https://tanstack.com/start"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors shadow-lg shadow-cyan-500/50"
-            >
-              Documentation
-            </a>
-            <p className="text-gray-400 text-sm mt-2">
-              Begin your TanStack Start journey by editing{' '}
-              <code className="px-2 py-1 bg-slate-700 rounded text-cyan-400">
-                /src/routes/index.tsx
-              </code>
-            </p>
-          </div>
-        </div>
-      </section>
+	const handleFiles = useCallback(async (files: File[]) => {
+		setIsUploading(true);
+		setUploadStatus(null);
 
-      <section className="py-16 px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, index) => (
-            <div
-              key={index}
-              className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-cyan-500/50 transition-all duration-300 hover:shadow-lg hover:shadow-cyan-500/10"
-            >
-              <div className="mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold text-white mb-3">
-                {feature.title}
-              </h3>
-              <p className="text-gray-400 leading-relaxed">
-                {feature.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  )
+		try {
+			// Upload files to API for parsing
+			const formData = new FormData();
+			for (const file of files) {
+				formData.append("files", file);
+			}
+
+			const response = await fetch("/api/upload", {
+				method: "POST",
+				body: formData,
+			});
+
+			const result = await response.json();
+
+			if (result.status === "error") {
+				setUploadStatus({
+					type: "error",
+					message: result.errorMessage || "Upload failed",
+				});
+				return;
+			}
+
+			// Process each file result
+			let totalExpenses = 0;
+			let totalErrors = 0;
+			let earliestNewMonth: { year: number; month: string } | null = null;
+
+			for (const fileResult of result.files) {
+				// Record upload metadata
+				await recordUpload({
+					filename: fileResult.filename,
+					size: fileResult.size,
+					status: fileResult.status,
+					errorMessage: fileResult.errorMessage,
+				});
+
+				if (fileResult.status === "success" && fileResult.expenses) {
+					const expenses = fileResult.expenses as ParsedExpense[];
+
+					// Add expenses to Convex
+					const addResult = await addExpenses({ expenses });
+					totalExpenses += addResult.addedCount;
+
+					// Track earliest new month
+					if (addResult.addedCount > 0) {
+						for (const expense of expenses) {
+							if (
+								!earliestNewMonth ||
+								expense.year < earliestNewMonth.year ||
+								(expense.year === earliestNewMonth.year &&
+									expense.month < earliestNewMonth.month)
+							) {
+								earliestNewMonth = {
+									year: expense.year,
+									month: expense.month,
+								};
+							}
+						}
+					}
+				} else {
+					totalErrors++;
+				}
+			}
+
+			if (totalErrors > 0 && totalExpenses === 0) {
+				setUploadStatus({
+					type: "error",
+					message: `Failed to parse ${totalErrors} file(s)`,
+				});
+			} else {
+				setUploadStatus({
+					type: "success",
+					message: `Successfully added ${totalExpenses} expense(s)${
+						totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
+					}`,
+				});
+
+				// Navigate to the earliest new month if we added expenses
+				if (earliestNewMonth) {
+					const targetYear = earliestNewMonth.year;
+					setTimeout(() => {
+						navigate({
+							to: "/year/$year",
+							params: { year: targetYear.toString() },
+						});
+					}, 1500);
+				}
+			}
+		} catch (error) {
+			setUploadStatus({
+				type: "error",
+				message: error instanceof Error ? error.message : "Upload failed",
+			});
+		} finally {
+			setIsUploading(false);
+		}
+	}, [addExpenses, recordUpload, navigate]);
+
+	const handleDragOver = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		setIsDragging(true);
+	}, []);
+
+	const handleDragLeave = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		setIsDragging(false);
+	}, []);
+
+	const handleDrop = useCallback(async (e: React.DragEvent) => {
+		e.preventDefault();
+		setIsDragging(false);
+
+		const files = Array.from(e.dataTransfer.files).filter(
+			(file) => file.type === "application/pdf",
+		);
+
+		if (files.length === 0) {
+			setUploadStatus({
+				type: "error",
+				message: "Please upload only PDF files",
+			});
+			return;
+		}
+
+		await handleFiles(files);
+	}, [handleFiles]);
+
+	const handleFileInput = useCallback(
+		async (e: React.ChangeEvent<HTMLInputElement>) => {
+			const files = Array.from(e.target.files || []).filter(
+				(file) => file.type === "application/pdf",
+			);
+
+			if (files.length === 0) {
+				setUploadStatus({
+					type: "error",
+					message: "Please upload only PDF files",
+				});
+				return;
+			}
+
+			await handleFiles(files);
+		},
+		[handleFiles],
+	);
+
+	return (
+		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+			<div className="max-w-4xl mx-auto">
+				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
+					Expense Splitter
+				</h1>
+				<p className="text-gray-400 text-center mb-12">
+					Upload PDF statements to track and split expenses 50/50
+				</p>
+
+				{/* Upload Area */}
+				<div
+					role="button"
+					tabIndex={0}
+					className={`border-2 border-dashed rounded-xl p-12 mb-12 transition-all ${
+						isDragging
+							? "border-cyan-500 bg-cyan-500/10"
+							: "border-slate-600 bg-slate-800/50"
+					}`}
+					onDragOver={handleDragOver}
+					onDragLeave={handleDragLeave}
+					onDrop={handleDrop}
+				>
+					<div className="flex flex-col items-center justify-center text-center">
+						<Upload
+							className={`w-16 h-16 mb-4 ${
+								isDragging ? "text-cyan-400" : "text-gray-400"
+							}`}
+						/>
+						<h3 className="text-xl font-semibold text-white mb-2">
+							{isDragging ? "Drop PDF files here" : "Upload Expense PDFs"}
+						</h3>
+						<p className="text-gray-400 mb-4">
+							Drag and drop PDF files or click to browse
+						</p>
+						<label
+							htmlFor="file-upload"
+							className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+						>
+							{isUploading ? "Uploading..." : "Choose Files"}
+						</label>
+						<input
+							id="file-upload"
+							type="file"
+							multiple
+							accept=".pdf"
+							className="hidden"
+							onChange={handleFileInput}
+							disabled={isUploading}
+						/>
+					</div>
+				</div>
+
+				{/* Upload Status */}
+				{uploadStatus && (
+					<div
+						className={`mb-8 p-4 rounded-lg ${
+							uploadStatus.type === "success"
+								? "bg-green-500/10 border border-green-500/50 text-green-400"
+								: "bg-red-500/10 border border-red-500/50 text-red-400"
+						}`}
+					>
+						{uploadStatus.message}
+					</div>
+				)}
+
+				{/* Years List */}
+				<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
+					<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+						<Calendar className="w-6 h-6" />
+						Expense Years
+					</h2>
+
+					{years === undefined ? (
+						<p className="text-gray-400">Loading...</p>
+					) : years.length === 0 ? (
+						<p className="text-gray-400">
+							No expenses yet. Upload a PDF to get started.
+						</p>
+					) : (
+						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+							{years.map((year) => (
+								<Link
+									key={year}
+									to="/year/$year"
+									params={{ year: year.toString() }}
+									className="bg-slate-700/50 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500 rounded-lg p-6 text-center transition-all group"
+								>
+									<div className="text-3xl font-bold text-white group-hover:text-cyan-400 transition-colors">
+										{year}
+									</div>
+								</Link>
+							))}
+						</div>
+					)}
+				</div>
+			</div>
+		</div>
+	);
 }
