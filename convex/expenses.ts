@@ -356,3 +356,50 @@ export const getMonthExpenses = query({
 		}
 	},
 })
+
+// Get monthly expense totals across all time for charting
+export const getMonthlyTotals = query({
+	args: {},
+	handler: async (ctx) => {
+		const expenses = await ctx.db.query("expenses").collect()
+
+		// Group by year-month
+		const monthlyMap = new Map<
+			string,
+			{ year: number; month: string; total: number }
+		>()
+
+		for (const expense of expenses) {
+			if (!expense.checked) continue // Only count checked expenses
+
+			const key = `${expense.year}-${expense.month}`
+			const existing = monthlyMap.get(key) || {
+				year: expense.year,
+				month: expense.month,
+				total: 0,
+			}
+
+			// Add to total, dividing by 2 for split expenses (default is split)
+			const isSplit = expense.split ?? true
+			const shareAmount = isSplit ? expense.amount / 2 : expense.amount
+			existing.total += shareAmount
+
+			monthlyMap.set(key, existing)
+		}
+
+		// Convert to array and sort by date
+		const monthlyData = Array.from(monthlyMap.values())
+			.sort((a, b) => {
+				if (a.year !== b.year) return a.year - b.year
+				return a.month.localeCompare(b.month)
+			})
+			.map((item) => ({
+				...item,
+				total: Math.round(item.total * 100) / 100,
+				// Format label as "Jan 2024"
+				label: `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number.parseInt(item.month) - 1]} ${item.year}`,
+			}))
+
+		return monthlyData
+	},
+})
