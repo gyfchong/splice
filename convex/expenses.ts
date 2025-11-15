@@ -12,6 +12,14 @@ export const getYears = query({
 	},
 })
 
+// Get all expenses (for scanning and building mappings)
+export const getAllExpenses = query({
+	args: {},
+	handler: async (ctx) => {
+		return await ctx.db.query("expenses").collect()
+	},
+})
+
 // Get expenses grouped by month for a specific year
 export const getExpensesByYear = query({
 	args: { year: v.number() },
@@ -363,7 +371,7 @@ export const getMonthExpenses = query({
 })
 
 // Update expense category
-export const updateExpenseCategory = mutation({
+export const updateExpenseCategory = internalMutation({
 	args: {
 		expenseId: v.string(),
 		category: v.string(),
@@ -437,10 +445,27 @@ export const addExpensesWithCategories = action({
 		),
 		userId: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		addedCount: number
+		duplicateCount: number
+		newExpenseIds: string[]
+	}> => {
 		const { normalizeMerchant } = await import("./utils")
 
-		const expensesWithCategories = []
+		const expensesWithCategories: Array<{
+			expenseId: string
+			name: string
+			amount: number
+			date: string
+			year: number
+			month: string
+			checked?: boolean
+			category: string
+			merchantName: string
+		}> = []
 
 		// Categorize each expense
 		for (const expense of args.expenses) {
@@ -462,7 +487,11 @@ export const addExpensesWithCategories = action({
 		}
 
 		// Add all expenses to database
-		const result = await ctx.runMutation(api.expenses.addExpenses, {
+		const result: {
+			addedCount: number
+			duplicateCount: number
+			newExpenseIds: string[]
+		} = await ctx.runMutation(api.expenses.addExpenses, {
 			expenses: expensesWithCategories,
 		})
 

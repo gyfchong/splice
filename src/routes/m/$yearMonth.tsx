@@ -2,15 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, ChevronLeft, Tag, User, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { CategorySelect } from "@/components/CategorySelect";
 import { Switch } from "@/components/ui/switch";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { CATEGORIES } from "@/lib/categories";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/m/$yearMonth")({
@@ -253,7 +246,7 @@ function MonthPage() {
 									{/* Second row: category selector */}
 									<div className="flex items-center gap-2 ml-9">
 										<Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
-										<Select
+										<CategorySelect
 											value={expense.category || "Other"}
 											onValueChange={(newCategory) =>
 												handleCategoryChange(
@@ -263,18 +256,7 @@ function MonthPage() {
 												)
 											}
 											disabled={updatingExpenseId === expense.expenseId}
-										>
-											<SelectTrigger className="w-48 h-8 bg-slate-700/50 border-slate-600 text-sm">
-												<SelectValue placeholder="Select category" />
-											</SelectTrigger>
-											<SelectContent>
-												{CATEGORIES.map((category) => (
-													<SelectItem key={category} value={category}>
-														{category}
-													</SelectItem>
-												))}
-											</SelectContent>
-										</Select>
+										/>
 										{updatingExpenseId === expense.expenseId && (
 											<span className="text-xs text-gray-400">Updating...</span>
 										)}

@@ -7,7 +7,7 @@
  */
 export function normalizeMerchant(description: string): string {
 	// Convert to uppercase and trim
-	let normalized = description.toUpperCase().trim()
+	let normalized = description.toUpperCase().trim();
 
 	// Remove common suffixes and transaction IDs
 	normalized = normalized
@@ -16,11 +16,11 @@ export function normalizeMerchant(description: string): string {
 		// Remove numbers at the end (location codes, transaction IDs)
 		.replace(/\s+\d+$/g, "")
 		// Remove common location indicators
-		.replace(/\s+(STORE|BRANCH|LOCATION|OUTLET|PTY LTD|PTY|LTD)$/g, "")
+		.replace(/\s+(STORE|BRANCH|LOCATION|OUTLET|PTY LTD|PTY|LTD)$/g, "");
 
 	// Extract first significant word(s)
 	// Split by common delimiters
-	const parts = normalized.split(/[\s\-_/]+/)
+	const parts = normalized.split(/[\s\-_/]+/);
 
 	// Known merchant patterns (can be expanded)
 	const knownMerchants = [
@@ -77,31 +77,31 @@ export function normalizeMerchant(description: string): string {
 		"PIZZA HUT",
 		"RED ROOSTER",
 		"OPORTO",
-	]
+	];
 
 	// Check if any known merchant is in the description
 	for (const merchant of knownMerchants) {
 		if (normalized.includes(merchant)) {
-			return merchant
+			return merchant;
 		}
 	}
 
 	// For multi-word merchants, try to preserve up to 2 words
 	if (parts.length >= 2) {
 		// Check if first two words form a known pattern
-		const firstTwo = `${parts[0]} ${parts[1]}`
+		const firstTwo = `${parts[0]} ${parts[1]}`;
 		for (const merchant of knownMerchants) {
 			if (merchant === firstTwo) {
-				return merchant
+				return merchant;
 			}
 		}
 	}
 
 	// Fallback: return first word if it's meaningful (>2 chars)
 	if (parts[0] && parts[0].length > 2) {
-		return parts[0]
+		return parts[0];
 	}
 
 	// Last resort: return trimmed normalized string (max 50 chars)
-	return normalized.substring(0, 50)
+	return normalized.substring(0, 50);
 }

@@ -42,14 +42,14 @@ function YearPage() {
 	const data = useQuery(
 		api.expenses.getYearSummary,
 		sessionStartTime !== null ? { year: yearNum, sessionStartTime } : "skip",
-	)
+	);
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
 			currency: "USD",
 		}).format(amount);
-	}
+	};
 
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
@@ -191,12 +191,12 @@ function YearPage() {
 											{month.numberOfExpenses === 1 ? "expense" : "expenses"}
 										</div>
 									</Link>
-								)
+								);
 							})}
 						</div>
 					</>
 				)}
 			</div>
 		</div>
-	)
+	);
 }

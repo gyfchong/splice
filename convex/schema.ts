@@ -28,7 +28,7 @@ export default defineSchema({
 		category: v.string(), // Most common category
 		confidence: v.string(), // "ai" | "user" | "consensus"
 		voteCount: v.number(), // Number of user confirmations
-		categoryVotes: v.optional(v.object({})), // JSON object tracking votes per category
+		categoryVotes: v.optional(v.any()), // JSON object tracking votes per category (dynamic keys)
 		aiSuggestion: v.optional(v.string()), // Original AI suggestion
 		lastUpdated: v.number(), // Timestamp
 	}).index("by_merchant", ["merchantName"]),
@@ -39,4 +39,9 @@ export default defineSchema({
 		category: v.string(), // User's preferred category
 		createdAt: v.number(), // Timestamp
 	}).index("by_user_merchant", ["userId", "merchantName"]),
+	// Custom user-created categories
+	customCategories: defineTable({
+		name: v.string(), // Category name
+		createdAt: v.number(), // Timestamp
+	}).index("by_name", ["name"]),
 })
