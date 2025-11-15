@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronLeft } from "lucide-react";
+import { Calendar, ChevronLeft, User, Users } from "lucide-react";
 import { useEffect } from "react";
+import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/m/$yearMonth")({
@@ -17,6 +18,7 @@ function MonthPage() {
 		month,
 	});
 	const toggleExpense = useMutation(api.expenses.toggleExpense);
+	const toggleSplit = useMutation(api.expenses.toggleSplit);
 
 	// Mark this month as visited when component mounts
 	useEffect(() => {
@@ -35,6 +37,14 @@ function MonthPage() {
 			await toggleExpense({ expenseId });
 		} catch (error) {
 			console.error("Failed to toggle expense:", error);
+		}
+	};
+
+	const handleToggleSplit = async (expenseId: string) => {
+		try {
+			await toggleSplit({ expenseId });
+		} catch (error) {
+			console.error("Failed to toggle split:", error);
 		}
 	};
 
@@ -118,7 +128,7 @@ function MonthPage() {
 						{/* Expenses List */}
 						<div className="space-y-2">
 							{data.expenses.map((expense) => (
-								<label
+								<div
 									key={expense._id}
 									className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
 										expense.checked
@@ -127,23 +137,46 @@ function MonthPage() {
 									}`}
 								>
 									<input
+										id={`expense.${expense.expenseId}`}
 										type="checkbox"
 										checked={expense.checked}
 										onChange={() => handleToggle(expense.expenseId)}
 										className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
 									/>
-									<div className="flex-1 min-w-0">
+									<label
+										htmlFor={`expense.${expense.expenseId}`}
+										className="flex-1 min-w-0"
+									>
 										<div className="text-white font-medium truncate">
 											{expense.name}
 										</div>
 										<div className="text-sm text-gray-400">
 											{formatDate(expense.date)}
 										</div>
-									</div>
+									</label>
 									<div className="text-lg font-semibold text-white">
 										{formatCurrency(expense.amount)}
 									</div>
-								</label>
+									<div className="flex items-center gap-2">
+										{(expense.split ?? true) ? (
+											<Users className="w-4 h-4 text-cyan-400" />
+										) : (
+											<User className="w-4 h-4 text-purple-400" />
+										)}
+										<Switch
+											checked={expense.split ?? true}
+											onCheckedChange={() =>
+												handleToggleSplit(expense.expenseId)
+											}
+											className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
+											title={
+												(expense.split ?? true)
+													? "Split 50/50 - Toggle for 100%"
+													: "100% - Toggle for 50/50 split"
+											}
+										/>
+									</div>
+								</div>
 							))}
 						</div>
 					</div>

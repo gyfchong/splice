@@ -8,6 +8,7 @@ export default defineSchema({
 		amount: v.number(),
 		date: v.string(), // YYYY-MM-DD format
 		checked: v.boolean(),
+		split: v.optional(v.boolean()), // Whether expense is split (50/50) or not (100%), defaults to true
 		year: v.number(),
 		month: v.string(), // 2-digit format: "01", "02", etc.
 		uploadTimestamp: v.optional(v.number()), // When expense was added (for unseen tracking)
