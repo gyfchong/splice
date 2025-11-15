@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import type { ParsedExpense } from "@/lib/pdf-parser";
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
 	const years = useQuery(api.expenses.getYears);
-	const addExpenses = useMutation(api.expenses.addExpenses);
+	const addExpensesWithCategories = useAction(api.expenses.addExpensesWithCategories);
 	const recordUpload = useMutation(api.expenses.recordUpload);
 	const navigate = useNavigate();
 	const [isDragging, setIsDragging] = useState(false);
@@ -63,8 +63,8 @@ function HomePage() {
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
 
-						// Add expenses to Convex
-						const addResult = await addExpenses({ expenses });
+						// Add expenses to Convex with automatic categorization
+						const addResult = await addExpensesWithCategories({ expenses });
 						totalExpenses += addResult.addedCount;
 
 						// Track earliest new month
@@ -110,7 +110,7 @@ function HomePage() {
 				setIsUploading(false);
 			}
 		},
-		[addExpenses, recordUpload, navigate],
+		[addExpensesWithCategories, recordUpload, navigate],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
