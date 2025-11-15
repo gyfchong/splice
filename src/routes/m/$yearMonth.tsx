@@ -15,7 +15,7 @@ function MonthPage() {
 	const data = useQuery(api.expenses.getMonthExpenses, {
 		year: yearNum,
 		month,
-	})
+	});
 	const toggleExpense = useMutation(api.expenses.toggleExpense);
 
 	// Mark this month as visited when component mounts
@@ -23,7 +23,7 @@ function MonthPage() {
 		const visitedMonthsKey = `visitedMonths_${year}`;
 		const visitedMonths = JSON.parse(
 			localStorage.getItem(visitedMonthsKey) || "[]",
-		)
+		);
 		if (!visitedMonths.includes(month)) {
 			visitedMonths.push(month);
 			localStorage.setItem(visitedMonthsKey, JSON.stringify(visitedMonths));
@@ -36,14 +36,14 @@ function MonthPage() {
 		} catch (error) {
 			console.error("Failed to toggle expense:", error);
 		}
-	}
+	};
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
 			currency: "USD",
 		}).format(amount);
-	}
+	};
 
 	const formatDate = (dateStr: string) => {
 		const date = new Date(dateStr);
@@ -51,7 +51,7 @@ function MonthPage() {
 			month: "short",
 			day: "numeric",
 		}).format(date);
-	}
+	};
 
 	const getMonthName = (monthNum: string) => {
 		const monthNames = [
@@ -67,9 +67,9 @@ function MonthPage() {
 			"October",
 			"November",
 			"December",
-		]
+		];
 		return monthNames[Number.parseInt(monthNum, 10) - 1];
-	}
+	};
 
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
@@ -118,7 +118,7 @@ function MonthPage() {
 						{/* Expenses List */}
 						<div className="space-y-2">
 							{data.expenses.map((expense) => (
-								<div
+								<label
 									key={expense._id}
 									className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
 										expense.checked
@@ -143,12 +143,12 @@ function MonthPage() {
 									<div className="text-lg font-semibold text-white">
 										{formatCurrency(expense.amount)}
 									</div>
-								</div>
+								</label>
 							))}
 						</div>
 					</div>
 				)}
 			</div>
 		</div>
-	)
+	);
 }
