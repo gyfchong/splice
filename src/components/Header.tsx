@@ -13,19 +13,18 @@ export default function Header() {
 				<h1 className="text-xl font-semibold">Expense Splitter</h1>
 			</Link>
 
-			{/* Conditional Admin Link with Badge */}
-			{stats?.needsAttention && (
-				<Link
-					to="/admin"
-					className="relative text-gray-300 hover:text-white transition-colors"
-					activeProps={{ className: "text-cyan-400" }}
-				>
-					<span className="font-medium">Admin</span>
-					<span className="absolute -top-2 -right-2 h-5 min-w-[20px] px-1.5 rounded-full bg-red-500 text-xs text-white flex items-center justify-center animate-pulse">
+			<Link
+				to="/admin"
+				className="relative text-gray-300 hover:text-white transition-colors"
+				activeProps={{ className: "text-cyan-400" }}
+			>
+				<span className="font-medium">Admin</span>
+				{stats?.needsAttention && (
+					<span className="absolute -top-2 -right-2 h-5 min-w-5 px-1.5 rounded-full bg-red-500 text-xs text-white flex items-center justify-center animate-pulse">
 						{stats.expenses.uncategorized}
 					</span>
-				</Link>
-			)}
+				)}
+			</Link>
 		</header>
 	);
 }
