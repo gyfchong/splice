@@ -105,3 +105,22 @@ export function normalizeMerchant(description: string): string {
 	// Last resort: return trimmed normalized string (max 50 chars)
 	return normalized.substring(0, 50)
 }
+
+/**
+ * Calculate cutoff date N months ago from a given date
+ * @param fromDate - Date in YYYY-MM-DD format
+ * @param monthsBack - Number of months to go back
+ * @returns Date in YYYY-MM-DD format
+ *
+ * Examples:
+ * - calculateCutoffDate("2024-03-15", 2) → "2024-01-15"
+ * - calculateCutoffDate("2024-01-31", 2) → "2023-11-30" (handles month end)
+ */
+export function calculateCutoffDate(
+	fromDate: string,
+	monthsBack: number,
+): string {
+	const date = new Date(fromDate)
+	date.setMonth(date.getMonth() - monthsBack)
+	return date.toISOString().split("T")[0] // YYYY-MM-DD
+}
