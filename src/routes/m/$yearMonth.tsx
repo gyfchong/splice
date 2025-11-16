@@ -209,7 +209,7 @@ function MonthPage() {
 
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
-			<div className="max-w-6xl mx-auto">
+			<div className="max-w-6xl mx-auto page-fade-in">
 				{/* Header */}
 				<div className="mb-8">
 					<Link

@@ -46,6 +46,7 @@ function HomePage() {
 		totalFiles: 0,
 	});
 	const [lastVisitedPage, setLastVisitedPage] = useState<string | null>(null);
+	const [isTransitioning, setIsTransitioning] = useState(false);
 
 	// Load last visited page from localStorage
 	useEffect(() => {
@@ -173,14 +174,20 @@ function HomePage() {
 						status: "completed",
 					}));
 
-					// Navigate to the oldest month of uploaded expenses
+					// Trigger transition then navigate to the oldest month
 					if (uploadedMonths.size > 0) {
 						const sortedMonths = Array.from(uploadedMonths).sort();
 						const oldestMonth = sortedMonths[0]; // YYYY-MM format sorts correctly
-						navigate({
-							to: "/m/$yearMonth",
-							params: { yearMonth: oldestMonth },
-						});
+
+						setIsTransitioning(true);
+
+						// Wait for shrink animation to complete before navigating
+						setTimeout(() => {
+							navigate({
+								to: "/m/$yearMonth",
+								params: { yearMonth: oldestMonth },
+							});
+						}, 600); // Match CSS transition duration
 					}
 
 					// Check for uncategorized expenses and show toast notification
@@ -315,7 +322,7 @@ function HomePage() {
 			)}
 
 			<div
-				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""}`}
+				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""} ${isTransitioning ? "upload-shrinking" : ""}`}
 			>
 				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
 					Luman
