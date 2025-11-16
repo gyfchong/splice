@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -46,32 +46,10 @@ function AllCaughtUp({ stats }: { stats: any }) {
 }
 
 function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncategorizedExpenses: any }) {
-	const runWorkflow = useAction(
-		api.categorization.runFullCategorizationWorkflow,
-	);
 	const deleteAllExpenses = useMutation(api.expenses.deleteAllExpenses);
 	const { toast } = useToast();
-	const [isProcessing, setIsProcessing] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
-
-	const handleRunWorkflow = async () => {
-		setIsProcessing(true);
-		try {
-			const result = await runWorkflow();
-			toast({
-				title: "Categorization complete!",
-				description: `${result.phase1.newlyCategorized} expenses categorized, ${result.phase2.created} merchants mapped.`,
-			});
-		} catch (error: any) {
-			toast({
-				title: "Categorization failed",
-				description: error.message,
-			});
-		} finally {
-			setIsProcessing(false);
-		}
-	};
 
 	const handleDeleteAll = async () => {
 		const confirmed = window.confirm(
@@ -143,48 +121,39 @@ function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncatego
 				/>
 			</div>
 
-			{/* Main Action Card */}
-			<div className="bg-white border-2 border-zinc-200 rounded-lg p-8 mb-8">
-				<div className="flex items-start justify-between mb-6">
-					<div>
-						<h2 className="text-2xl font-bold mb-2">
-							Manual AI Categorization (Immediate)
+			{/* Background Processing Info */}
+			<div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
+				<div className="flex items-start gap-4">
+					<div className="text-4xl">⚙️</div>
+					<div className="flex-1">
+						<h2 className="text-xl font-bold mb-2 text-blue-900">
+							Automatic Background Categorization
 						</h2>
-						<p className="text-zinc-600 max-w-2xl">
-							Manually trigger immediate AI categorization for{" "}
-							<span className="font-semibold text-cyan-600">
-								{stats.expenses.uncategorized}
-							</span>{" "}
-							uncategorized expenses. This processes them immediately instead of waiting for the background worker.
+						<p className="text-blue-800 mb-3">
+							The system automatically categorizes uncategorized expenses using:
 						</p>
+						<ul className="space-y-2 text-sm text-blue-700">
+							<li className="flex items-start gap-2">
+								<span className="text-blue-500 mt-0.5">•</span>
+								<span><strong>Cache & Heuristics</strong> - Instant categorization during upload (~70% success rate)</span>
+							</li>
+							<li className="flex items-start gap-2">
+								<span className="text-blue-500 mt-0.5">•</span>
+								<span><strong>Background Worker</strong> - Processes 1 job every 5 seconds (respects rate limits)</span>
+							</li>
+							<li className="flex items-start gap-2">
+								<span className="text-blue-500 mt-0.5">•</span>
+								<span><strong>Daily Catchup</strong> - Runs at 2 AM to categorize any remaining uncategorized expenses</span>
+							</li>
+						</ul>
+						{stats.expenses.uncategorized > 0 && (
+							<div className="mt-4 p-3 bg-white/60 rounded border border-blue-300">
+								<p className="text-sm text-blue-900">
+									<strong>{stats.expenses.uncategorized}</strong> expense{stats.expenses.uncategorized === 1 ? "" : "s"} currently queued for background processing.
+								</p>
+							</div>
+						)}
 					</div>
-				</div>
-
-				{/* Action Button */}
-				<Button
-					onClick={handleRunWorkflow}
-					disabled={isProcessing || stats.expenses.uncategorized === 0}
-					className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-semibold px-8 py-6 text-lg"
-				>
-					{isProcessing ? (
-						<>
-							<span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-							Processing...
-						</>
-					) : (
-						<>
-							<span className="mr-2">⚡</span>
-							Run Immediate Categorization
-						</>
-					)}
-				</Button>
-
-				{/* Info Note */}
-				<div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-					<p className="text-sm text-blue-900">
-						<strong>ℹ️ Note:</strong> The background worker automatically categorizes uncategorized expenses every 5 seconds and daily at 2 AM.
-						Use this button only if you need immediate results instead of waiting for the background process.
-					</p>
 				</div>
 			</div>
 
