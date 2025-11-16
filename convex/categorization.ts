@@ -149,6 +149,107 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
 })
 
 /**
+ * PHASE 2: Exponential backoff retry wrapper for AI categorization
+ * Retries failed categorizations with increasing delays
+ *
+ * @param merchantName - Normalized merchant name
+ * @param description - Transaction description
+ * @param maxRetries - Maximum number of retry attempts (default: 3)
+ * @returns Category name or "Other" as fallback
+ */
+export const categorizeMerchantWithRetry = action({
+	args: {
+		merchantName: v.string(),
+		description: v.string(),
+		maxRetries: v.optional(v.number()),
+	},
+	handler: async (ctx, { merchantName, description, maxRetries = 3 }): Promise<{
+		category: string
+		attempts: number
+		finalAttemptSucceeded: boolean
+		retryDelays: number[]
+	}> => {
+		let lastError: Error | null = null
+		const retryDelays: number[] = []
+
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			try {
+				console.log(
+					`[categorizeMerchantWithRetry] Attempt ${attempt + 1}/${maxRetries} for ${merchantName}`,
+				)
+
+				const category = await ctx.runAction(api.categorization.categorizeMerchantWithAI, {
+					merchantName,
+					description,
+				})
+
+				console.log(
+					`[categorizeMerchantWithRetry] ✓ Success on attempt ${attempt + 1} for ${merchantName}: ${category}`,
+				)
+
+				return {
+					category,
+					attempts: attempt + 1,
+					finalAttemptSucceeded: true,
+					retryDelays,
+				}
+			} catch (error) {
+				lastError = error as Error
+				const errorMessage = lastError.message || String(error)
+
+				// Check if this is a rate limit error
+				if (errorMessage.startsWith("RATE_LIMIT")) {
+					console.warn(
+						`[categorizeMerchantWithRetry] ⚠ Rate limit hit on attempt ${attempt + 1} for ${merchantName}`,
+					)
+
+					// If we have more retries left, wait with exponential backoff
+					if (attempt < maxRetries - 1) {
+						// Exponential backoff: 1s, 2s, 4s, 8s, etc. (max 30s)
+						const delay = Math.min(1000 * 2 ** attempt, 30000)
+						retryDelays.push(delay)
+						console.log(
+							`[categorizeMerchantWithRetry] Waiting ${delay}ms before retry ${attempt + 2}...`,
+						)
+						await new Promise((resolve) => setTimeout(resolve, delay))
+						continue
+					}
+
+					// Max retries reached
+					console.error(
+						`[categorizeMerchantWithRetry] ✗ Max retries (${maxRetries}) reached for ${merchantName}, using fallback category "Other"`,
+					)
+					return {
+						category: "Other",
+						attempts: maxRetries,
+						finalAttemptSucceeded: false,
+						retryDelays,
+					}
+				}
+
+				// Non-rate-limit error - fail immediately
+				console.error(
+					`[categorizeMerchantWithRetry] ✗ Non-rate-limit error for ${merchantName}:`,
+					errorMessage,
+				)
+				throw error
+			}
+		}
+
+		// Should not reach here, but fallback to "Other" if we do
+		console.error(
+			`[categorizeMerchantWithRetry] ✗ All retries exhausted for ${merchantName}, using fallback category "Other"`,
+		)
+		return {
+			category: "Other",
+			attempts: maxRetries,
+			finalAttemptSucceeded: false,
+			retryDelays,
+		}
+	},
+})
+
+/**
  * Get global merchant mapping
  */
 export const getGlobalMapping = query({
@@ -350,20 +451,35 @@ export const voteForCategory = internalMutation({
  * PHASE 1 IMPROVEMENTS:
  * - Enhanced logging to track cache hits vs AI calls
  * - Better error propagation for rate limit handling
+ *
+ * PHASE 2 IMPROVEMENTS:
+ * - Optional retry logic with exponential backoff
+ * - Enhanced logging with attempt tracking
+ * - Detailed return type with categorization metadata
  */
 export const getCategoryForMerchant = action({
 	args: {
 		merchantName: v.string(),
 		description: v.string(),
 		userId: v.optional(v.string()),
+		enableRetry: v.optional(v.boolean()), // Enable exponential backoff retry (Phase 2)
+		maxRetries: v.optional(v.number()), // Max retry attempts (default: 3)
 	},
-	handler: async (ctx, { merchantName, description, userId }): Promise<string> => {
+	handler: async (ctx, { merchantName, description, userId, enableRetry = false, maxRetries = 3 }): Promise<{
+		category: string
+		source: "personal" | "global" | "ai" | "ai-retry"
+		attempts?: number
+		retryDelays?: number[]
+	}> => {
 		// 1. Check personal mapping first (highest priority)
 		if (userId) {
 			const personal = await ctx.runQuery(api.categorization.getPersonalMapping, { userId, merchantName })
 			if (personal) {
 				console.log(`[getCategoryForMerchant] ✓ Personal mapping found for ${merchantName}: ${personal.category}`)
-				return personal.category
+				return {
+					category: personal.category,
+					source: "personal",
+				}
 			}
 		}
 
@@ -373,17 +489,44 @@ export const getCategoryForMerchant = action({
 			console.log(
 				`[getCategoryForMerchant] ✓ Global mapping found for ${merchantName}: ${global.category} (confidence: ${global.confidence})`,
 			)
-			return global.category
+			return {
+				category: global.category,
+				source: "global",
+			}
 		}
 
-		// 3. Use AI to categorize (this may throw RATE_LIMIT error)
+		// 3. Use AI to categorize (with optional retry logic)
 		console.log(`[getCategoryForMerchant] No cached mapping for ${merchantName}, calling AI...`)
 
 		try {
-			const category = await ctx.runAction(api.categorization.categorizeMerchantWithAI, {
-				merchantName,
-				description,
-			})
+			let category: string
+			let attempts = 1
+			let retryDelays: number[] = []
+			let source: "ai" | "ai-retry" = "ai"
+
+			if (enableRetry) {
+				// PHASE 2: Use retry logic with exponential backoff
+				console.log(`[getCategoryForMerchant] Using retry logic (max ${maxRetries} attempts)`)
+				const retryResult = await ctx.runAction(api.categorization.categorizeMerchantWithRetry, {
+					merchantName,
+					description,
+					maxRetries,
+				})
+				category = retryResult.category
+				attempts = retryResult.attempts
+				retryDelays = retryResult.retryDelays
+				source = retryResult.attempts > 1 ? "ai-retry" : "ai"
+
+				console.log(
+					`[getCategoryForMerchant] ✓ AI categorized ${merchantName} as ${category} after ${attempts} attempt(s)`,
+				)
+			} else {
+				// PHASE 1: Single attempt (may throw RATE_LIMIT error)
+				category = await ctx.runAction(api.categorization.categorizeMerchantWithAI, {
+					merchantName,
+					description,
+				})
+			}
 
 			// 4. Store in global mapping for future use
 			await ctx.runMutation(internal.categorization.upsertGlobalMapping, {
@@ -395,7 +538,12 @@ export const getCategoryForMerchant = action({
 
 			console.log(`[getCategoryForMerchant] ✓ AI categorized ${merchantName} as ${category}, saved to global mapping`)
 
-			return category
+			return {
+				category,
+				source,
+				attempts,
+				retryDelays,
+			}
 		} catch (error) {
 			// Propagate rate limit errors upstream so they can be handled gracefully
 			if ((error as Error).message?.startsWith("RATE_LIMIT")) {
@@ -488,13 +636,14 @@ export const categorizeExistingExpenses = action({
 				// Normalize merchant name
 				const merchantName = normalizeMerchant(expense.name)
 
-				// Get category for this merchant
-				const category = await ctx.runAction(
+				// Get category for this merchant (Phase 2: returns object with category and metadata)
+				const result = await ctx.runAction(
 					api.categorization.getCategoryForMerchant,
 					{
 						merchantName,
 						description: expense.name,
 						userId: args.userId,
+						enableRetry: false, // Disable retry for backfill to avoid long delays
 					},
 				)
 
@@ -503,7 +652,7 @@ export const categorizeExistingExpenses = action({
 					internal.expenses.updateExpenseWithCategoryAndMerchant,
 					{
 						expenseId: expense.expenseId,
-						category,
+						category: result.category,
 						merchantName,
 					},
 				)
