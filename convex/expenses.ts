@@ -942,3 +942,152 @@ export const getRateLimitStatus = query({
 		return await ctx.runQuery((internal as any).rateLimit.getAllRateLimitStatus, {})
 	},
 })
+
+/**
+ * Add expenses with known categories only (no AI)
+ * This action:
+ * 1. Saves ALL expenses to database first
+ * 2. Normalizes merchant names
+ * 3. Checks ONLY cached mappings (personal → global)
+ * 4. Updates expenses with found categories (NO AI calls)
+ * 5. Returns simple statistics
+ *
+ * Use this for bulk imports to avoid rate limits.
+ * Uncategorized expenses can be categorized later using the admin tool.
+ */
+export const addExpensesWithKnownCategories = action({
+	args: {
+		expenses: v.array(
+			v.object({
+				expenseId: v.string(),
+				name: v.string(),
+				amount: v.number(),
+				date: v.string(),
+				year: v.number(),
+				month: v.string(),
+				checked: v.optional(v.boolean()),
+				split: v.optional(v.boolean()),
+			}),
+		),
+		userId: v.optional(v.string()),
+	},
+	handler: async (
+		ctx,
+		args,
+	): Promise<{
+		addedCount: number
+		duplicateCount: number
+		newExpenseIds: string[]
+		categorizedFromCache: number
+		uncategorizedCount: number
+		totalMerchants: number
+	}> => {
+		const { normalizeMerchant } = await import("./utils")
+
+		console.log(`[addExpensesWithKnownCategories] Saving ${args.expenses.length} expenses...`)
+
+		// STEP 1: Save ALL expenses immediately (without categories)
+		const expensesWithMerchants = args.expenses.map((expense) => ({
+			...expense,
+			merchantName: normalizeMerchant(expense.name),
+			category: undefined, // Will be filled in if found in cache
+			split: expense.split ?? true,
+		}))
+
+		const saveResult = await ctx.runMutation(api.expenses.addExpenses, {
+			expenses: expensesWithMerchants,
+		})
+
+		console.log(
+			`[addExpensesWithKnownCategories] Saved ${saveResult.addedCount} new expenses, ${saveResult.duplicateCount} duplicates`,
+		)
+
+		// STEP 2: Deduplicate merchants
+		const merchantGroups = new Map<
+			string,
+			Array<{
+				expenseId: string
+				name: string
+				merchantName: string
+			}>
+		>()
+
+		for (const expense of expensesWithMerchants) {
+			if (!merchantGroups.has(expense.merchantName)) {
+				merchantGroups.set(expense.merchantName, [])
+			}
+			merchantGroups.get(expense.merchantName)!.push({
+				expenseId: expense.expenseId,
+				name: expense.name,
+				merchantName: expense.merchantName,
+			})
+		}
+
+		console.log(
+			`[addExpensesWithKnownCategories] Deduplication: ${args.expenses.length} expenses → ${merchantGroups.size} unique merchants`,
+		)
+
+		// STEP 3: Check ONLY cached mappings (personal → global)
+		let categorizedFromCache = 0
+		let uncategorizedCount = 0
+
+		for (const [merchantName, expenses] of merchantGroups.entries()) {
+			let category: string | null = null
+
+			// Check personal mapping first
+			if (args.userId) {
+				const personal = await ctx.runQuery(api.categorization.getPersonalMapping, {
+					userId: args.userId,
+					merchantName,
+				})
+				if (personal) {
+					category = personal.category
+					console.log(`[addExpensesWithKnownCategories] ✓ Personal mapping: ${merchantName} → ${category}`)
+				}
+			}
+
+			// Check global mapping
+			if (!category) {
+				const global = await ctx.runQuery(api.categorization.getGlobalMapping, {
+					merchantName,
+				})
+				if (global) {
+					category = global.category
+					console.log(`[addExpensesWithKnownCategories] ✓ Global mapping: ${merchantName} → ${category}`)
+				}
+			}
+
+			// If we have a category from cache, apply it
+			if (category) {
+				for (const expense of expenses) {
+					await ctx.runMutation(internal.expenses.updateExpenseCategory, {
+						expenseId: expense.expenseId,
+						category,
+					})
+				}
+				categorizedFromCache++
+				console.log(`[addExpensesWithKnownCategories] ✓ Categorized ${expenses.length} expenses for ${merchantName}`)
+			} else {
+				// No category found - leave uncategorized
+				uncategorizedCount++
+				console.log(`[addExpensesWithKnownCategories] ⚠ No category found for ${merchantName} (${expenses.length} expenses)`)
+			}
+		}
+
+		console.log(`[addExpensesWithKnownCategories] ========== SUMMARY ==========`)
+		console.log(`[addExpensesWithKnownCategories] Total expenses: ${args.expenses.length}`)
+		console.log(`[addExpensesWithKnownCategories] Unique merchants: ${merchantGroups.size}`)
+		console.log(`[addExpensesWithKnownCategories] Categorized from cache: ${categorizedFromCache} merchants`)
+		console.log(`[addExpensesWithKnownCategories] Uncategorized: ${uncategorizedCount} merchants`)
+		console.log(`[addExpensesWithKnownCategories] ==========================================`)
+
+		return {
+			addedCount: saveResult.addedCount,
+			duplicateCount: saveResult.duplicateCount,
+			newExpenseIds: saveResult.newExpenseIds,
+			categorizedFromCache,
+			uncategorizedCount,
+			totalMerchants: merchantGroups.size,
+		}
+	},
+})

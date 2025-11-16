@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronLeft, Tag, User, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+	Calendar,
+	ChevronLeft,
+	RefreshCw,
+	Tag,
+	User,
+	Users,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
@@ -24,11 +31,19 @@ function MonthPage() {
 	const updateCategoryWithMapping = useAction(
 		api.categorization.updateExpenseCategoryWithMapping,
 	);
+	const categorizeExpenses = useAction(
+		api.categorization.categorizeExistingExpenses,
+	);
 
 	// Track which expense is being updated
 	const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(
 		null,
 	);
+	const [isCategorizing, setIsCategorizing] = useState(false);
+	const [categorizeStatus, setCategorizeStatus] = useState<{
+		type: "success" | "error";
+		message: string;
+	} | null>(null);
 
 	// Mark this month as visited when component mounts
 	useEffect(() => {
@@ -96,6 +111,43 @@ function MonthPage() {
 		}
 	};
 
+	const handleCategorizeExpenses = useCallback(async () => {
+		setIsCategorizing(true);
+		setCategorizeStatus(null);
+
+		try {
+			const result = await categorizeExpenses({ userId: "anonymous" });
+
+			// Check if we hit rate limiting
+			if (result.rateLimitResetTime) {
+				const resetDate = new Date(result.rateLimitResetTime);
+				const now = new Date();
+				const minutesUntilReset = Math.ceil(
+					(resetDate.getTime() - now.getTime()) / 60000,
+				);
+				const resetTimeStr = resetDate.toLocaleTimeString();
+
+				setCategorizeStatus({
+					type: "error",
+					message: `Rate limit reached. Categorized ${result.newlyCategorized} expenses before limit. You can resume at ${resetTimeStr} (in ${minutesUntilReset} minute${minutesUntilReset !== 1 ? "s" : ""}). Free tier limit: 16 requests/minute.`,
+				});
+			} else {
+				setCategorizeStatus({
+					type: "success",
+					message: `Categorization complete: ${result.totalExpenses} total expenses, ${result.alreadyCategorized} already categorized, ${result.newlyCategorized} newly categorized${result.errors > 0 ? `, ${result.errors} errors` : ""}`,
+				});
+			}
+		} catch (error) {
+			setCategorizeStatus({
+				type: "error",
+				message:
+					error instanceof Error ? error.message : "Categorization failed",
+			});
+		} finally {
+			setIsCategorizing(false);
+		}
+	}, [categorizeExpenses]);
+
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
@@ -158,20 +210,62 @@ function MonthPage() {
 						</p>
 					</div>
 				) : (
-					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-						{/* Month Header */}
-						<div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-600">
-							<h2 className="text-2xl font-bold text-white flex items-center gap-2">
-								<Calendar className="w-6 h-6 text-cyan-400" />
-								Expenses
-							</h2>
-							<div className="text-right">
-								<div className="text-sm text-gray-400 mb-1">Your Share</div>
-								<div className="text-2xl font-bold text-cyan-400">
-									{formatCurrency(data.totalShare)}
+					<>
+						{/* Categorize Expenses Section */}
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 mb-6">
+							<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+								<div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Categorize Uncategorized Expenses
+									</h3>
+									<p className="text-gray-400 text-sm">
+										Use AI to automatically categorize expenses that don't have
+										categories yet.
+									</p>
+									<p className="text-sm text-yellow-400 mt-1">
+										⚠️ Rate Limit: 16 requests/minute (free tier)
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={handleCategorizeExpenses}
+									disabled={isCategorizing}
+									className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+								>
+									<RefreshCw
+										className={`w-5 h-5 ${isCategorizing ? "animate-spin" : ""}`}
+									/>
+									{isCategorizing ? "Categorizing..." : "Categorize Expenses"}
+								</button>
+							</div>
+
+							{categorizeStatus && (
+								<div
+									className={`mt-4 p-4 rounded-lg ${
+										categorizeStatus.type === "success"
+											? "bg-green-500/10 border border-green-500/50 text-green-400"
+											: "bg-red-500/10 border border-red-500/50 text-red-400"
+									}`}
+								>
+									{categorizeStatus.message}
+								</div>
+							)}
+						</div>
+
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+							{/* Month Header */}
+							<div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-600">
+								<h2 className="text-2xl font-bold text-white flex items-center gap-2">
+									<Calendar className="w-6 h-6 text-cyan-400" />
+									Expenses
+								</h2>
+								<div className="text-right">
+									<div className="text-sm text-gray-400 mb-1">Your Share</div>
+									<div className="text-2xl font-bold text-cyan-400">
+										{formatCurrency(data.totalShare)}
+									</div>
 								</div>
 							</div>
-						</div>
 
 						{/* Check All */}
 						<div className="mb-4 pb-3 border-b border-slate-600/50">
@@ -265,6 +359,7 @@ function MonthPage() {
 							))}
 						</div>
 					</div>
+					</>
 				)}
 			</div>
 		</div>
