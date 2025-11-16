@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ChevronLeft, Tag, Trash2, User, Users } from "lucide-react";
+import { ChevronLeft, Tag, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
@@ -256,7 +256,6 @@ function MonthPage() {
 											className="bg-cyan-600 hover:bg-cyan-700 text-white"
 											size="sm"
 										>
-											<Users className="w-4 h-4 mr-2" />
 											Split All (50%)
 										</Button>
 										<Button
@@ -265,7 +264,6 @@ function MonthPage() {
 											className="bg-purple-600 hover:bg-purple-700 text-white"
 											size="sm"
 										>
-											<User className="w-4 h-4 mr-2" />
 											Individual All (100%)
 										</Button>
 										<Button
@@ -312,7 +310,6 @@ function MonthPage() {
 									const yourShare = isSplit
 										? expense.amount / 2
 										: expense.amount;
-									const sharePercentage = isSplit ? 50 : 100;
 
 									return (
 										<div
@@ -323,7 +320,7 @@ function MonthPage() {
 													: "bg-slate-700/30 border-slate-600/30 hover:bg-slate-700/50"
 											}`}
 										>
-											{/* Main row: checkbox, name, amount, your share badge, split toggle */}
+											{/* Main row: checkbox, name, amount, split toggle */}
 											<div className="flex items-center gap-4 mb-3">
 												{/* Checkbox */}
 												<input
@@ -347,25 +344,17 @@ function MonthPage() {
 													<div className="text-lg font-semibold text-white">
 														{formatCurrency(expense.amount)}
 													</div>
-													<div
-														className={`text-xs font-medium ${isSplit ? "text-cyan-400" : "text-purple-400"}`}
-													>
-														Your share: {formatCurrency(yourShare)} (
-														{sharePercentage}%)
+													<div className="text-xs text-gray-400">
+														{formatCurrency(yourShare)}
 													</div>
 												</div>
-												<div className="flex items-center gap-2 shrink-0">
-													{isSplit ? (
-														<Users className="w-4 h-4 text-cyan-400" />
-													) : (
-														<User className="w-4 h-4 text-purple-400" />
-													)}
+												<div className="flex items-center shrink-0">
 													<Switch
 														checked={isSplit}
 														onCheckedChange={() =>
 															handleToggleSplit(expense.expenseId)
 														}
-														className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
+														className="data-[state=checked]:bg-slate-500 data-[state=unchecked]:bg-slate-500"
 														title={
 															isSplit
 																? "Split 50/50 - Toggle for 100%"
@@ -376,7 +365,7 @@ function MonthPage() {
 											</div>
 
 											{/* Category row (indented to align with content) */}
-											<div className="flex items-center gap-2 ml-9">
+											<div className="flex items-center gap-2 ml-9 mb-2">
 												<Tag className="w-4 h-4 text-gray-400 shrink-0" />
 												<CategorySelect
 													value={expense.category || "Other"}
@@ -395,6 +384,15 @@ function MonthPage() {
 													</span>
 												)}
 											</div>
+
+											{/* Shared tag at bottom */}
+											{isSplit && (
+												<div className="ml-9">
+													<span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-600 text-slate-300 rounded">
+														Shared
+													</span>
+												</div>
+											)}
 										</div>
 									);
 								})}
