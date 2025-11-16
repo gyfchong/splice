@@ -281,9 +281,6 @@ export function categorizeByHeuristics(
 	merchantName: string,
 	description: string,
 ): string | null {
-	// Combine merchant name and description for matching
-	const searchText = `${merchantName} ${description}`.toLowerCase()
-
 	// Track matches with scores (for when multiple categories match)
 	const categoryScores: Record<string, number> = {}
 

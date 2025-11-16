@@ -6,7 +6,6 @@
 
 import { internalAction, internalQuery } from "./_generated/server"
 import { internal } from "./_generated/api"
-import type { api } from "./_generated/api"
 import { categorizeByHeuristics } from "./heuristics"
 
 /**
@@ -192,11 +191,6 @@ export const weeklyStats = internalAction({
 			(internal as any).rateLimit.getAllRateLimitStatus,
 			{},
 		)
-
-		// Heuristic stats
-		const heuristicStats = (categorizeByHeuristics as any).__heuristicStats || {
-			note: "Stats not available (function doesn't track)",
-		}
 
 		return {
 			timestamp: Date.now(),

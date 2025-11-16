@@ -13,9 +13,6 @@ function HomePage() {
 	const addExpensesWithCategories = useAction(
 		api.expenses.addExpensesWithCategories,
 	);
-	const addExpensesWithBackgroundCategorization = useAction(
-		api.expenses.addExpensesWithBackgroundCategorization,
-	);
 	const recordUpload = useMutation(api.expenses.recordUpload);
 	const populateMappings = useAction(
 		api.categorization.populateMerchantMappingsFromExpenses,
@@ -24,7 +21,6 @@ function HomePage() {
 		api.categorization.categorizeExistingExpenses,
 	);
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
-	const rateLimitStatus = useQuery(api.expenses.getRateLimitStatus);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
 	const [isScanning, setIsScanning] = useState(false);

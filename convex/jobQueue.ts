@@ -7,8 +7,6 @@
 
 import { v } from "convex/values"
 import { internalMutation, internalQuery } from "./_generated/server"
-import type { Doc, Id } from "./_generated/dataModel"
-import { internal } from "./_generated/api"
 
 /**
  * Creates a new categorization job

@@ -32,7 +32,7 @@ export const categorizeMerchantWithAI = action({
 		merchantName: v.string(),
 		description: v.string(),
 	},
-	handler: async (ctx, { merchantName, description }): Promise<string> => {
+	handler: async (_ctx, { merchantName, description }): Promise<string> => {
 		const apiKey = process.env.OPENROUTER_API_KEY
 
 		if (!apiKey) {
@@ -893,7 +893,7 @@ export const updateExpenseCategory = internalMutation({
 		merchantName: v.optional(v.string()),
 		userId: v.optional(v.string()),
 	},
-	handler: async (ctx, { expenseId, category, merchantName, userId }) => {
+	handler: async (ctx, { expenseId, category, merchantName, userId: _userId }) => {
 		// Find the expense
 		const expense = await ctx.db
 			.query("expenses")
