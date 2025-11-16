@@ -254,15 +254,27 @@ export async function parsePDF(
 		// Get PDF document proxy
 		const pdf = await getDocumentProxy(uint8Array);
 
-		// Extract text from all pages
-		const { text } = await extractText(pdf, { mergePages: true });
+		// Extract text from all pages separately (not merged) to preserve line structure
+		const { text: pageTexts, totalPages } = await extractText(pdf, {
+			mergePages: false,
+		});
 
-		console.log(`[PDF Parser] Extracted ${text.length} characters from PDF`);
+		console.log(`[PDF Parser] Extracted text from ${totalPages} pages`);
+
+		// Combine all page texts with newline separator to preserve line structure
+		const combinedText = pageTexts.join("\n");
+
+		console.log(
+			`[PDF Parser] Combined text length: ${combinedText.length} characters`,
+		);
 
 		// Log first 500 chars for debugging
-		console.log("[PDF Parser] First 500 chars:", text.substring(0, 500));
+		console.log(
+			"[PDF Parser] First 500 chars:",
+			combinedText.substring(0, 500),
+		);
 
-		const expenses = extractExpenses(text, autoCheck);
+		const expenses = extractExpenses(combinedText, autoCheck);
 
 		if (expenses.length === 0) {
 			console.error("[PDF Parser] No expenses found in PDF");

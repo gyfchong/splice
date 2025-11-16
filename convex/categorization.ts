@@ -943,7 +943,7 @@ export const getAdminDashboardStats = query({
 	handler: async (ctx) => {
 		// Count total and uncategorized expenses
 		const allExpenses = await ctx.db.query("expenses").collect()
-		const uncategorized = allExpenses.filter((e) => !e.category)
+		const uncategorized = allExpenses.filter((e) => !e.category || e.category === null)
 		const totalCount = allExpenses.length
 		const uncategorizedCount = uncategorized.length
 		const percentage = totalCount > 0
@@ -1003,7 +1003,10 @@ export const getUncategorizedFromUpload = query({
 			.filter((q) =>
 				q.and(
 					q.gte(q.field("uploadTimestamp"), uploadTimestamp),
-					q.eq(q.field("category"), undefined),
+					q.or(
+						q.eq(q.field("category"), undefined),
+						q.eq(q.field("category"), null),
+					),
 				),
 			)
 			.collect()
@@ -1011,6 +1014,61 @@ export const getUncategorizedFromUpload = query({
 		return {
 			count: uncategorized.length,
 			hasUncategorized: uncategorized.length > 0,
+		}
+	},
+})
+
+/**
+ * Get all uncategorized expenses grouped by merchant
+ * Used by admin page to show list of expenses needing manual categorization
+ */
+export const getUncategorizedExpensesByMerchant = query({
+	args: {},
+	handler: async (ctx) => {
+		// Get all uncategorized expenses
+		const allExpenses = await ctx.db.query("expenses").collect()
+		const uncategorized = allExpenses.filter((e) => !e.category || e.category === null)
+
+		// Group by merchant
+		const merchantGroups = new Map<
+			string,
+			Array<{
+				_id: string
+				expenseId: string
+				name: string
+				amount: number
+				date: string
+			}>
+		>()
+
+		for (const expense of uncategorized) {
+			const merchantName = expense.merchantName || "UNKNOWN"
+			if (!merchantGroups.has(merchantName)) {
+				merchantGroups.set(merchantName, [])
+			}
+			merchantGroups.get(merchantName)!.push({
+				_id: expense._id as string,
+				expenseId: expense.expenseId,
+				name: expense.name,
+				amount: expense.amount,
+				date: expense.date,
+			})
+		}
+
+		// Convert to array and sort by expense count (descending)
+		const groupedExpenses = Array.from(merchantGroups.entries())
+			.map(([merchantName, expenses]) => ({
+				merchantName,
+				expenseCount: expenses.length,
+				totalAmount: Math.round(expenses.reduce((sum, e) => sum + e.amount, 0) * 100) / 100,
+				expenses: expenses.sort((a, b) => b.date.localeCompare(a.date)), // Sort by date descending
+			}))
+			.sort((a, b) => b.expenseCount - a.expenseCount) // Sort by count descending
+
+		return {
+			totalUncategorized: uncategorized.length,
+			uniqueMerchants: merchantGroups.size,
+			groups: groupedExpenses,
 		}
 	},
 })
