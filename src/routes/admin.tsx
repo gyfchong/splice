@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { CategorySelect } from "@/components/CategorySelect";
 import { api } from "../../convex/_generated/api";
 
 // Type definitions for Convex query returns
@@ -104,9 +105,35 @@ function AdminDashboard({
 	uncategorizedExpenses: UncategorizedExpensesByMerchant | undefined;
 }) {
 	const deleteAllExpenses = useMutation(api.expenses.deleteAllExpenses);
+	const manuallyCategorize = useAction(api.categorization.manuallyCategorizeExpenses);
 	const { toast } = useToast();
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
+	const [categorizingMerchant, setCategorizingMerchant] = useState<string | null>(null);
+
+	const handleCategoryChange = async (merchantName: string, category: string) => {
+		setCategorizingMerchant(merchantName);
+		try {
+			const result = await manuallyCategorize({
+				merchantName,
+				category,
+				userId: "anonymous",
+			});
+
+			toast({
+				title: "Categorization successful!",
+				description: `Updated ${result.updatedCount} expense${result.updatedCount === 1 ? "" : "s"} and removed ${result.removedFromQueue} from queue.`,
+			});
+		} catch (error) {
+			toast({
+				title: "Categorization failed",
+				description: error instanceof Error ? error.message : "Unknown error",
+				variant: "destructive",
+			});
+		} finally {
+			setCategorizingMerchant(null);
+		}
+	};
 
 	const handleDeleteAll = async () => {
 		const confirmed = window.confirm(
@@ -310,7 +337,7 @@ function AdminDashboard({
 						</h3>
 						<p className="text-sm text-zinc-500 mb-4">
 							These expenses will be automatically categorized by the background
-							worker. You can also manually categorize them if needed.
+							worker, or you can manually select a category below.
 						</p>
 						<div className="space-y-2 max-h-[500px] overflow-y-auto">
 							{uncategorizedExpenses.groups.map((group) => (
@@ -318,18 +345,8 @@ function AdminDashboard({
 									key={group.merchantName}
 									className="border border-zinc-200 rounded-lg overflow-hidden"
 								>
-									<button
-										type="button"
-										onClick={() =>
-											setExpandedMerchant(
-												expandedMerchant === group.merchantName
-													? null
-													: group.merchantName,
-											)
-										}
-										className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
-									>
-										<div className="flex-1 text-left">
+									<div className="flex items-center justify-between p-4 bg-white hover:bg-zinc-50 transition-colors">
+										<div className="flex-1">
 											<div className="font-medium text-zinc-900">
 												{group.merchantName}
 											</div>
@@ -339,10 +356,29 @@ function AdminDashboard({
 												{group.totalAmount.toFixed(2)} total
 											</div>
 										</div>
-										<div className="text-zinc-400">
-											{expandedMerchant === group.merchantName ? "▼" : "▶"}
+
+										<div className="flex items-center gap-3">
+											<CategorySelect
+												value=""
+												onValueChange={(category) => handleCategoryChange(group.merchantName, category)}
+												disabled={categorizingMerchant === group.merchantName}
+												className="w-48 h-9 bg-white border-zinc-300 text-sm"
+											/>
+											<button
+												type="button"
+												onClick={() =>
+													setExpandedMerchant(
+														expandedMerchant === group.merchantName
+															? null
+															: group.merchantName,
+													)
+												}
+												className="text-zinc-400 hover:text-zinc-600 px-2"
+											>
+												{expandedMerchant === group.merchantName ? "▼" : "▶"}
+											</button>
 										</div>
-									</button>
+									</div>
 
 									{expandedMerchant === group.merchantName && (
 										<div className="bg-zinc-50 p-4 border-t border-zinc-200">
