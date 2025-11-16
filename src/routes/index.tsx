@@ -177,12 +177,10 @@ function HomePage() {
 					if (uploadedMonths.size > 0) {
 						const sortedMonths = Array.from(uploadedMonths).sort();
 						const oldestMonth = sortedMonths[0]; // YYYY-MM format sorts correctly
-						setTimeout(() => {
-							navigate({
-								to: "/m/$yearMonth",
-								params: { yearMonth: oldestMonth },
-							});
-						}, 1000);
+						navigate({
+							to: "/m/$yearMonth",
+							params: { yearMonth: oldestMonth },
+						});
 					}
 
 					// Check for uncategorized expenses and show toast notification

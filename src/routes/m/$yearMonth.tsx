@@ -3,6 +3,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ChevronLeft, Tag, Trash2, User, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
+import { ExpenseListSkeleton } from "@/components/ExpenseListSkeleton";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -227,7 +228,12 @@ function MonthPage() {
 
 				{/* Loading State */}
 				{data === undefined ? (
-					<div className="text-gray-400">Loading expenses...</div>
+					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+						<div className="mb-4">
+							<div className="h-8 bg-slate-600/30 rounded w-48 animate-pulse" />
+						</div>
+						<ExpenseListSkeleton count={8} />
+					</div>
 				) : data.expenses.length === 0 ? (
 					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 text-center">
 						<p className="text-gray-400">
