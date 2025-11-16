@@ -204,6 +204,14 @@ function HomePage() {
 		[handleFiles],
 	);
 
+	const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+		// Trigger file input on Enter or Space key
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			document.getElementById("file-upload")?.click();
+		}
+	}, []);
+
 	const handleFileInput = useCallback(
 		async (e: React.ChangeEvent<HTMLInputElement>) => {
 			const files = Array.from(e.target.files || []).filter(
@@ -287,9 +295,14 @@ function HomePage() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
-			{/* Upload Progress Banner */}
+			{/* Upload Progress Banner - ARIA Live Region */}
 			{uploadProgress.status === "uploading" && (
-				<div className="fixed top-0 left-0 right-0 z-50 shadow-lg transition-all bg-blue-500/90 backdrop-blur-sm">
+				<div
+					className="fixed top-0 left-0 right-0 z-50 shadow-lg transition-all bg-blue-500/90 backdrop-blur-sm"
+					role="status"
+					aria-live="polite"
+					aria-atomic="true"
+				>
 					<div className="max-w-4xl mx-auto px-6 py-4">
 						<div className="flex items-center gap-3">
 							<Upload className="w-5 h-5 animate-pulse text-white" />
@@ -317,11 +330,14 @@ function HomePage() {
 					Upload PDF or CSV statements to track and split expenses 50/50
 				</p>
 
-				{/* Upload Area */}
+				{/* Upload Area - Accessible File Upload */}
 				<div
 					role="button"
-					tabIndex={0}
-					className={`border-2 border-dashed rounded-xl p-12 mb-12 transition-all ${
+					tabIndex={isUploading ? -1 : 0}
+					aria-label="File upload area. Press Enter or Space to select files, or drag and drop files here."
+					aria-describedby="upload-instructions"
+					aria-busy={isUploading}
+					className={`border-2 border-dashed rounded-xl p-12 mb-12 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
 						isDragging
 							? "border-cyan-500 bg-cyan-500/10"
 							: "border-slate-600 bg-slate-800/50"
@@ -329,22 +345,28 @@ function HomePage() {
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
 					onDrop={handleDrop}
+					onKeyDown={handleKeyDown}
 				>
 					<div className="flex flex-col items-center justify-center text-center">
 						<Upload
 							className={`w-16 h-16 mb-4 ${
 								isDragging ? "text-cyan-400" : "text-gray-400"
 							}`}
+							aria-hidden="true"
 						/>
 						<h3 className="text-xl font-semibold text-white mb-2">
 							{isDragging ? "Drop files here" : "Upload Expense Files"}
 						</h3>
-						<p className="text-gray-400 mb-4">
+						<p id="upload-instructions" className="text-gray-400 mb-2">
 							Drag and drop PDF or CSV files or click to browse
+						</p>
+						<p className="text-sm text-gray-500 mb-4">
+							Accepted formats: PDF, CSV. Max file size: 10MB per file.
 						</p>
 						<label
 							htmlFor="file-upload"
-							className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+							className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 text-white font-semibold rounded-lg transition-colors cursor-pointer inline-block"
+							aria-disabled={isUploading}
 						>
 							{isUploading ? "Uploading..." : "Choose Files"}
 						</label>
@@ -353,6 +375,7 @@ function HomePage() {
 							type="file"
 							multiple
 							accept=".pdf,.csv"
+							aria-describedby="upload-instructions"
 							className="hidden"
 							onChange={handleFileInput}
 							disabled={isUploading}
@@ -360,9 +383,12 @@ function HomePage() {
 					</div>
 				</div>
 
-				{/* Upload Status */}
+				{/* Upload Status - ARIA Live Region */}
 				{uploadStatus && (
 					<div
+						role="status"
+						aria-live="polite"
+						aria-atomic="true"
 						className={`mb-8 p-4 rounded-lg ${
 							uploadStatus.type === "success"
 								? "bg-green-500/10 border border-green-500/50 text-green-400"
@@ -493,6 +519,9 @@ function HomePage() {
 
 						{categorizeStatus && (
 							<div
+								role="status"
+								aria-live="polite"
+								aria-atomic="true"
 								className={`p-4 rounded-lg ${
 									categorizeStatus.type === "success"
 										? "bg-green-500/10 border border-green-500/50 text-green-400"
@@ -529,6 +558,9 @@ function HomePage() {
 
 						{scanStatus && (
 							<div
+								role="status"
+								aria-live="polite"
+								aria-atomic="true"
 								className={`p-4 rounded-lg ${
 									scanStatus.type === "success"
 										? "bg-green-500/10 border border-green-500/50 text-green-400"
