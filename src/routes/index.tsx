@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Calendar, RefreshCw, Upload } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+	Calendar,
+	ChevronRight,
+	Clock,
+	FileText,
+	RefreshCw,
+	Upload,
+} from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
 import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
@@ -12,6 +19,9 @@ export const Route = createFileRoute("/")({ component: HomePage });
 function HomePage() {
 	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
+	const recentBatches = useQuery(api.expenses.getRecentUploadBatches, {
+		limit: 20,
+	});
 	const addExpensesWithKnownCategories = useAction(
 		api.expenses.addExpensesWithKnownCategories,
 	);
@@ -19,6 +29,7 @@ function HomePage() {
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
+	const feedTopRef = useRef<HTMLDivElement>(null);
 	const [uploadStatus, setUploadStatus] = useState<{
 		type: "success" | "error";
 		message: string;
@@ -141,6 +152,15 @@ function HomePage() {
 					}));
 
 					// Check for queued expenses and show toast notification
+					// Scroll to feed after successful upload
+					setTimeout(() => {
+						feedTopRef.current?.scrollIntoView({
+							behavior: "smooth",
+							block: "start",
+						});
+					}, 500);
+
+					// Check for uncategorized expenses and show toast notification
 					if (totalUncategorized > 0) {
 						setTimeout(() => {
 							toast({
@@ -234,6 +254,9 @@ function HomePage() {
 		[handleFiles],
 	);
 
+	// Check if user has expenses
+	const hasExpenses = recentBatches !== undefined && recentBatches.length > 0;
+
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
 			{/* Upload Progress Banner - ARIA Live Region */}
@@ -267,61 +290,101 @@ function HomePage() {
 					Luman
 				</h1>
 				<p className="text-gray-400 text-center mb-12">
-					Your personal expense tracker
+					{hasExpenses
+						? "Your personal expense tracker"
+						: "Upload your expenses to get started"}
 				</p>
 
-				{/* Upload Area - Accessible File Upload */}
-				<button
-					type="button"
-					tabIndex={isUploading ? -1 : 0}
-					aria-label="File upload area. Press Enter or Space to select files, or drag and drop files here."
-					aria-describedby="upload-instructions"
-					aria-busy={isUploading}
-					className={`block w-full border-2 border-dashed rounded-xl p-12 mb-12 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
-						isDragging
-							? "border-cyan-500 bg-cyan-500/10"
-							: "border-slate-600 bg-slate-800/50"
-					}`}
-					onDragOver={handleDragOver}
-					onDragLeave={handleDragLeave}
-					onDrop={handleDrop}
-					onKeyDown={handleKeyDown}
-				>
-					<div className="flex flex-col items-center justify-center text-center">
-						<Upload
-							className={`w-16 h-16 mb-4 ${
-								isDragging ? "text-cyan-400" : "text-gray-400"
-							}`}
-							aria-hidden="true"
-						/>
-						<h3 className="text-xl font-semibold text-white mb-2">
-							{isDragging ? "Drop files here" : "Upload Expense Files"}
-						</h3>
-						<p id="upload-instructions" className="text-gray-400 mb-2">
-							Drag and drop PDF or CSV files or click to browse
-						</p>
-						<p className="text-sm text-gray-500 mb-4">
-							Accepted formats: PDF, CSV. Max file size: 10MB per file.
-						</p>
-						<label
-							htmlFor="file-upload"
-							className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 text-white font-semibold rounded-lg transition-colors cursor-pointer inline-block"
-							aria-disabled={isUploading}
-						>
-							{isUploading ? "Uploading..." : "Choose Files"}
-						</label>
-						<input
-							id="file-upload"
-							type="file"
-							multiple
-							accept=".pdf,.csv"
+				{/* Upload Area - Compact when expenses exist, prominent when empty */}
+				<div className={`${hasExpenses ? "mb-8" : "mb-12"}`}>
+					{hasExpenses ? (
+						// Compact upload button when expenses exist
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+							<div className="flex items-center justify-between gap-4">
+								<div className="flex items-center gap-3">
+									<Upload className="w-5 h-5 text-cyan-400" />
+									<div>
+										<h3 className="text-lg font-semibold text-white">
+											Add More Expenses
+										</h3>
+										<p className="text-sm text-gray-400">
+											Upload PDF or CSV files
+										</p>
+									</div>
+								</div>
+								<label
+									htmlFor="file-upload"
+									className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 text-white font-semibold rounded-lg transition-colors cursor-pointer"
+									aria-disabled={isUploading}
+								>
+									{isUploading ? "Uploading..." : "Upload Files"}
+								</label>
+								<input
+									id="file-upload"
+									type="file"
+									multiple
+									accept=".pdf,.csv"
+									className="hidden"
+									onChange={handleFileInput}
+									disabled={isUploading}
+								/>
+							</div>
+						</div>
+					) : (
+						// Prominent upload area when no expenses exist
+						<button
+							type="button"
+							tabIndex={isUploading ? -1 : 0}
+							aria-label="File upload area. Press Enter or Space to select files, or drag and drop files here."
 							aria-describedby="upload-instructions"
-							className="hidden"
-							onChange={handleFileInput}
-							disabled={isUploading}
-						/>
-					</div>
-				</button>
+							aria-busy={isUploading}
+							className={`block w-full border-2 border-dashed rounded-xl p-12 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
+								isDragging
+									? "border-cyan-500 bg-cyan-500/10"
+									: "border-slate-600 bg-slate-800/50"
+							}`}
+							onDragOver={handleDragOver}
+							onDragLeave={handleDragLeave}
+							onDrop={handleDrop}
+							onKeyDown={handleKeyDown}
+						>
+							<div className="flex flex-col items-center justify-center text-center">
+								<Upload
+									className={`w-16 h-16 mb-4 ${
+										isDragging ? "text-cyan-400" : "text-gray-400"
+									}`}
+									aria-hidden="true"
+								/>
+								<h3 className="text-xl font-semibold text-white mb-2">
+									{isDragging ? "Drop files here" : "Upload Expense Files"}
+								</h3>
+								<p id="upload-instructions" className="text-gray-400 mb-2">
+									Drag and drop PDF or CSV files or click to browse
+								</p>
+								<p className="text-sm text-gray-500 mb-4">
+									Accepted formats: PDF, CSV. Max file size: 10MB per file.
+								</p>
+								<label
+									htmlFor="file-upload-empty"
+									className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 text-white font-semibold rounded-lg transition-colors cursor-pointer inline-block"
+									aria-disabled={isUploading}
+								>
+									{isUploading ? "Uploading..." : "Choose Files"}
+								</label>
+								<input
+									id="file-upload-empty"
+									type="file"
+									multiple
+									accept=".pdf,.csv"
+									aria-describedby="upload-instructions"
+									className="hidden"
+									onChange={handleFileInput}
+									disabled={isUploading}
+								/>
+							</div>
+						</button>
+					)}
+				</div>
 
 				{/* Upload Status - ARIA Live Region */}
 				{uploadStatus && (
@@ -338,48 +401,173 @@ function HomePage() {
 					</output>
 				)}
 
-				{/* Monthly Expenses Chart */}
-				<div className="mb-8">
-					<MonthlyExpensesChart />
-				</div>
-
-				{/* Years List */}
-				<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mb-8">
-					<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-						<Calendar className="w-6 h-6" />
-						Expense Years
-					</h2>
-
-					{years === undefined ? (
-						<p className="text-gray-400">Loading...</p>
-					) : years.length === 0 ? (
-						<p className="text-gray-400">
-							No expenses yet. Upload a PDF or CSV file to get started.
-						</p>
-					) : (
-						<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-							{years.map((year) => (
+				{/* Recent Expenses Feed/Timeline */}
+				{hasExpenses ? (
+					<div ref={feedTopRef}>
+						{/* Feed Header */}
+						<div className="flex items-center justify-between mb-6">
+							<h2 className="text-2xl font-bold text-white flex items-center gap-2">
+								<Clock className="w-6 h-6" />
+								Recent Uploads
+							</h2>
+							{years && years.length > 0 && (
 								<Link
-									key={year}
 									to="/$year"
-									params={{ year: year.toString() }}
-									className="bg-slate-700/50 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500 rounded-lg p-6 text-center transition-all group"
+									params={{ year: years[0].toString() }}
+									className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-sm font-medium transition-colors"
 								>
-									<div className="text-3xl font-bold text-white group-hover:text-cyan-400 transition-colors">
-										{year}
-									</div>
+									View All Years
+									<ChevronRight className="w-4 h-4" />
 								</Link>
-							))}
+							)}
 						</div>
-					)}
-				</div>
+
+						{/* Expense Batches Feed */}
+						<div className="space-y-4">
+							{recentBatches === undefined ? (
+								<p className="text-gray-400">Loading...</p>
+							) : recentBatches.length === 0 ? (
+								<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 text-center">
+									<p className="text-gray-400">
+										No expenses yet. Upload a file to get started.
+									</p>
+								</div>
+							) : (
+								recentBatches.map((batch) => {
+									const uploadDate = new Date(batch.uploadDate);
+									const relativeTime = getRelativeTimeString(uploadDate);
+
+									return (
+										<div
+											key={batch.uploadTimestamp}
+											className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 hover:border-slate-600 transition-all"
+										>
+											{/* Batch Header */}
+											<div className="flex items-start justify-between mb-4">
+												<div>
+													<div className="flex items-center gap-2 mb-1">
+														<FileText className="w-4 h-4 text-cyan-400" />
+														<span className="text-white font-semibold">
+															{batch.expenseCount} expense
+															{batch.expenseCount !== 1 ? "s" : ""} added
+														</span>
+													</div>
+													<p className="text-sm text-gray-400">
+														{relativeTime}
+													</p>
+												</div>
+												<div className="text-right">
+													<div className="text-2xl font-bold text-white">
+														${batch.totals.all.toFixed(2)}
+													</div>
+													<div className="text-xs text-gray-400">Total</div>
+												</div>
+											</div>
+
+											{/* Batch Summary */}
+											<div className="grid grid-cols-2 gap-4 mb-4">
+												<div className="bg-slate-700/50 rounded-lg p-3">
+													<div className="text-xs text-gray-400 mb-1">
+														Shared (50%)
+													</div>
+													<div className="text-lg font-semibold text-green-400">
+														${batch.totals.shared.toFixed(2)}
+													</div>
+													<div className="text-xs text-gray-500">
+														{batch.counts.shared} expense
+														{batch.counts.shared !== 1 ? "s" : ""}
+													</div>
+												</div>
+												<div className="bg-slate-700/50 rounded-lg p-3">
+													<div className="text-xs text-gray-400 mb-1">
+														Individual (100%)
+													</div>
+													<div className="text-lg font-semibold text-blue-400">
+														${batch.totals.mine.toFixed(2)}
+													</div>
+													<div className="text-xs text-gray-500">
+														{batch.counts.mine} expense
+														{batch.counts.mine !== 1 ? "s" : ""}
+													</div>
+												</div>
+											</div>
+
+											{/* Expense Preview */}
+											{batch.previewExpenses.length > 0 && (
+												<div className="space-y-2 mb-4">
+													{batch.previewExpenses.map((expense) => (
+														<div
+															key={`${expense.date}-${expense.name}-${expense.amount}`}
+															className="flex items-center justify-between text-sm"
+														>
+															<span className="text-gray-300 truncate flex-1">
+																{expense.name}
+															</span>
+															<span className="text-gray-400 ml-2">
+																${expense.amount.toFixed(2)}
+															</span>
+														</div>
+													))}
+													{batch.expenseCount > 3 && (
+														<p className="text-xs text-gray-500">
+															+{batch.expenseCount - 3} more expense
+															{batch.expenseCount - 3 !== 1 ? "s" : ""}
+														</p>
+													)}
+												</div>
+											)}
+
+											{/* View Details Link */}
+											{batch.months.length > 0 && (
+												<div className="flex flex-wrap gap-2">
+													{batch.months.map((month) => {
+														const [year, monthNum] = month.split("-");
+														return (
+															<Link
+																key={month}
+																to="/m/$yearMonth"
+																params={{ yearMonth: month }}
+																className="inline-flex items-center gap-1 px-3 py-1 bg-slate-700/50 hover:bg-cyan-500/20 border border-slate-600 hover:border-cyan-500 rounded-lg text-sm text-white transition-all"
+															>
+																View {getMonthName(monthNum)} {year}
+																<ChevronRight className="w-3 h-3" />
+															</Link>
+														);
+													})}
+												</div>
+											)}
+										</div>
+									);
+								})
+							)}
+						</div>
+
+						{/* Monthly Chart Section */}
+						<div className="mt-12">
+							<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+								<Calendar className="w-6 h-6" />
+								Spending Trends
+							</h2>
+							<MonthlyExpensesChart />
+						</div>
+					</div>
+				) : (
+					// Empty state - show welcome message and chart if any data exists
+					<div>
+						{years && years.length > 0 && (
+							<div className="mb-8">
+								<MonthlyExpensesChart />
+							</div>
+						)}
+					</div>
+				)}
 
 				{/* Phase 3: Job Queue Status */}
 				{jobQueueStats &&
 					(jobQueueStats.pending > 0 ||
 						jobQueueStats.processing > 0 ||
 						jobQueueStats.failed > 0) && (
-						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mb-8">
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mt-8">
 							<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
 								<RefreshCw
 									className={`w-6 h-6 ${jobQueueStats.processing > 0 ? "animate-spin text-cyan-400" : "text-gray-400"}`}
@@ -422,4 +610,40 @@ function HomePage() {
 			</div>
 		</div>
 	);
+}
+
+// Helper function to get relative time string
+function getRelativeTimeString(date: Date): string {
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	const diffHours = Math.floor(diffMs / 3600000);
+	const diffDays = Math.floor(diffMs / 86400000);
+
+	if (diffMins < 1) return "Just now";
+	if (diffMins < 60)
+		return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+	if (diffHours < 24)
+		return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+	if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+	return date.toLocaleDateString();
+}
+
+// Helper function to get month name from number
+function getMonthName(monthNum: string): string {
+	const months = [
+		"Jan",
+		"Feb",
+		"Mar",
+		"Apr",
+		"May",
+		"Jun",
+		"Jul",
+		"Aug",
+		"Sep",
+		"Oct",
+		"Nov",
+		"Dec",
+	];
+	return months[Number.parseInt(monthNum, 10) - 1] || monthNum;
 }
