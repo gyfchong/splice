@@ -1373,3 +1373,118 @@ export const bulkSetIndividual = mutation({
 		}
 	},
 })
+
+// Get recent expense uploads grouped by upload batch (for homepage feed)
+export const getRecentUploadBatches = query({
+	args: {
+		limit: v.optional(v.number()), // Number of batches to return (default: 10)
+	},
+	handler: async (ctx, args) => {
+		const limit = args.limit ?? 10
+
+		// Get all expenses with uploadTimestamp, sorted by newest first
+		const allExpenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.neq(q.field("uploadTimestamp"), undefined))
+			.collect()
+
+		// Sort by uploadTimestamp descending
+		const sortedExpenses = allExpenses.sort((a, b) => {
+			const aTime = a.uploadTimestamp ?? 0
+			const bTime = b.uploadTimestamp ?? 0
+			return bTime - aTime
+		})
+
+		// Group expenses by upload batch
+		// Expenses uploaded within 5 seconds of each other are considered the same batch
+		const BATCH_THRESHOLD_MS = 5000
+		const batches: Array<{
+			uploadTimestamp: number
+			expenses: typeof sortedExpenses
+			yearMonth: string
+			year: number
+			month: string
+		}> = []
+
+		for (const expense of sortedExpenses) {
+			const expenseTime = expense.uploadTimestamp ?? 0
+
+			// Find existing batch within threshold
+			const existingBatch = batches.find((batch) => {
+				return Math.abs(batch.uploadTimestamp - expenseTime) < BATCH_THRESHOLD_MS
+			})
+
+			if (existingBatch) {
+				existingBatch.expenses.push(expense)
+			} else {
+				// Create new batch
+				batches.push({
+					uploadTimestamp: expenseTime,
+					expenses: [expense],
+					yearMonth: `${expense.year}-${expense.month}`,
+					year: expense.year,
+					month: expense.month,
+				})
+			}
+		}
+
+		// Sort batches by uploadTimestamp descending and limit
+		const limitedBatches = batches
+			.sort((a, b) => b.uploadTimestamp - a.uploadTimestamp)
+			.slice(0, limit)
+
+		// Format batches with summary data
+		const formattedBatches = limitedBatches.map((batch) => {
+			// Calculate totals for this batch
+			let totalPersonal = 0
+			let totalShared = 0
+			let totalMine = 0
+
+			for (const expense of batch.expenses) {
+				const isSplit = expense.split ?? false
+				if (isSplit) {
+					const share = expense.amount / 2
+					totalShared += share
+					totalPersonal += share
+				} else {
+					totalMine += expense.amount
+					totalPersonal += expense.amount
+				}
+			}
+
+			// Get unique months in this batch
+			const monthsSet = new Set(
+				batch.expenses.map((e) => `${e.year}-${e.month}`),
+			)
+			const months = Array.from(monthsSet).sort()
+
+			// Get first 3 expense names for preview
+			const previewExpenses = batch.expenses.slice(0, 3).map((e) => ({
+				name: e.name,
+				amount: e.amount,
+				date: e.date,
+				category: e.category,
+			}))
+
+			return {
+				uploadTimestamp: batch.uploadTimestamp,
+				uploadDate: new Date(batch.uploadTimestamp).toISOString(),
+				expenseCount: batch.expenses.length,
+				months,
+				totals: {
+					all: Math.round(totalPersonal * 100) / 100,
+					mine: Math.round(totalMine * 100) / 100,
+					shared: Math.round(totalShared * 100) / 100,
+				},
+				counts: {
+					all: batch.expenses.length,
+					mine: batch.expenses.filter((e) => !(e.split ?? false)).length,
+					shared: batch.expenses.filter((e) => e.split ?? false).length,
+				},
+				previewExpenses,
+			}
+		})
+
+		return formattedBatches
+	},
+})
