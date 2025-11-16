@@ -1,6 +1,6 @@
 import { action, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { api } from "./_generated/api"
+import { api, internal } from "./_generated/api"
 
 // Get all years that have expenses
 export const getYears = query({
