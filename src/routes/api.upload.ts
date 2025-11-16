@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { parsePDF } from "@/lib/pdf-parser";
 import { parseCSV } from "@/lib/csv-parser";
+import { parsePDF } from "@/lib/pdf-parser";
 
 export const Route = createFileRoute("/api/upload")({
 	server: {
