@@ -20,6 +20,33 @@ export const getAllExpenses = query({
 	},
 })
 
+// Migration: Infer split field from checked field for backward compatibility
+// checked=true expenses were counted as shared (50%) → split=true
+// checked=false expenses were not counted → split=false (individual 100%)
+export const migrateSplitFromChecked = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const expenses = await ctx.db.query("expenses").collect()
+		let migrated = 0
+
+		for (const expense of expenses) {
+			// Only migrate if split is undefined
+			if (expense.split === undefined) {
+				await ctx.db.patch(expense._id, {
+					split: expense.checked, // checked=true → split=true, checked=false → split=false
+				})
+				migrated++
+			}
+		}
+
+		return {
+			message: `Migrated ${migrated} expenses`,
+			total: expenses.length,
+			alreadyMigrated: expenses.length - migrated,
+		}
+	},
+})
+
 // Get merchant's split pattern from recent history for smart auto-split prediction
 export const getMerchantSplitPattern = query({
 	args: {
@@ -55,7 +82,7 @@ export const getMerchantSplitPattern = query({
 		}
 
 		// Count split vs individual
-		const splitCount = historicalExpenses.filter((e) => e.split ?? true).length
+		const splitCount = historicalExpenses.filter((e) => e.split ?? false).length
 		const individualCount = historicalExpenses.length - splitCount
 		const splitPercentage = splitCount / historicalExpenses.length
 
@@ -200,8 +227,8 @@ export const toggleSplit = mutation({
 			throw new Error("Expense not found")
 		}
 
-		// Default to true (split) if undefined for backward compatibility
-		const currentSplit = expense.split ?? true
+		// Default to false (individual) if undefined - most expenses are personal
+		const currentSplit = expense.split ?? false
 		const newSplit = !currentSplit
 
 		await ctx.db.patch(expense._id, {
@@ -249,7 +276,7 @@ export const addExpenses = mutation({
 				await ctx.db.insert("expenses", {
 					...expense,
 					checked: expense.checked ?? false, // Use provided value or default to false
-					split: expense.split ?? true, // Use provided value or default to split (50/50)
+					split: expense.split ?? false, // Use provided value or default to individual (100%)
 					uploadTimestamp: Date.now(),
 					category: expense.category,
 					merchantName: expense.merchantName,
@@ -336,7 +363,7 @@ export const getYearSummary = query({
 			let totalMine = 0
 
 			for (const expense of monthExpenses) {
-				const isSplit = expense.split ?? true
+				const isSplit = expense.split ?? false
 				if (isSplit) {
 					const share = expense.amount / 2
 					totalShared += share
@@ -366,8 +393,8 @@ export const getYearSummary = query({
 				},
 				counts: {
 					all: monthExpenses.length,
-					mine: monthExpenses.filter((e) => !(e.split ?? true)).length,
-					shared: monthExpenses.filter((e) => e.split ?? true).length,
+					mine: monthExpenses.filter((e) => !(e.split ?? false)).length,
+					shared: monthExpenses.filter((e) => e.split ?? false).length,
 				},
 				showGreenDot: hasUnseen,
 			}
@@ -382,7 +409,7 @@ export const getYearSummary = query({
 		// Calculate previous year total for comparison
 		let previousYearTotal = 0
 		for (const expense of previousYearExpenses) {
-			const isSplit = expense.split ?? true
+			const isSplit = expense.split ?? false
 			previousYearTotal += isSplit ? expense.amount / 2 : expense.amount
 		}
 
@@ -454,7 +481,7 @@ export const getMonthExpenses = query({
 		let totalMine = 0 // Your individual expenses (amount @ 100%)
 
 		for (const expense of sortedExpenses) {
-			const isSplit = expense.split ?? true
+			const isSplit = expense.split ?? false
 			if (isSplit) {
 				const share = expense.amount / 2
 				totalShared += share
@@ -476,8 +503,8 @@ export const getMonthExpenses = query({
 			},
 			counts: {
 				all: expenses.length,
-				mine: expenses.filter((e) => !(e.split ?? true)).length,
-				shared: expenses.filter((e) => e.split ?? true).length,
+				mine: expenses.filter((e) => !(e.split ?? false)).length,
+				shared: expenses.filter((e) => e.split ?? false).length,
 			},
 		}
 	},
@@ -504,7 +531,7 @@ export const getMonthlyTotals = query({
 			}
 
 			// Add to total, dividing by 2 for split expenses (default is split)
-			const isSplit = expense.split ?? true
+			const isSplit = expense.split ?? false
 			const shareAmount = isSplit ? expense.amount / 2 : expense.amount
 			existing.total += shareAmount
 
@@ -647,7 +674,7 @@ export const addExpensesWithCategories = action({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
 			category: undefined, // Will be filled in later
-			split: expense.split ?? true, // Default to split (50/50) if not specified
+			split: expense.split ?? false, // Default to individual (100%) if not specified
 		}))
 
 		const saveResult = await ctx.runMutation(api.expenses.addExpenses, {
@@ -882,7 +909,7 @@ export const addExpensesWithBackgroundCategorization = action({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
 			category: undefined,
-			split: expense.split ?? true, // Will be overridden by prediction if available
+			split: expense.split ?? false, // Will be overridden by prediction if available
 		}))
 
 		// STEP 1.5: Smart auto-split prediction for each expense

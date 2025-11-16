@@ -179,7 +179,7 @@ function extractExpenses(text: string, autoCheck = false): ParsedExpense[] {
 				year: Number.parseInt(year, 10),
 				month,
 				checked: autoCheck,
-				split: true, // Default to split (50/50)
+				split: false, // Default to individual (100%) - most expenses are personal
 			});
 			continue;
 		}
@@ -229,7 +229,7 @@ function extractExpenses(text: string, autoCheck = false): ParsedExpense[] {
 				year: Number.parseInt(year, 10),
 				month,
 				checked: autoCheck,
-				split: true, // Default to split (50/50)
+				split: false, // Default to individual (100%) - most expenses are personal
 			});
 		}
 	}
