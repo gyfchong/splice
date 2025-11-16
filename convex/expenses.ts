@@ -1605,17 +1605,17 @@ export const getMonthsGroupedByYear = query({
 		// Get all expenses
 		const allExpenses = await ctx.db.query("expenses").collect()
 
-		// Group by year and month
-		const yearMonthMap = new Map<
-			number,
-			Set<string>
-		>()
+		// Group by year and month using plain objects and arrays
+		const yearMonthObj: Record<number, string[]> = {}
 
 		for (const expense of allExpenses) {
-			if (!yearMonthMap.has(expense.year)) {
-				yearMonthMap.set(expense.year, new Set())
+			if (!yearMonthObj[expense.year]) {
+				yearMonthObj[expense.year] = []
 			}
-			yearMonthMap.get(expense.year)!.add(expense.month)
+			// Only add if not already present
+			if (!yearMonthObj[expense.year].includes(expense.month)) {
+				yearMonthObj[expense.year].push(expense.month)
+			}
 		}
 
 		const monthNames = [
@@ -1634,10 +1634,10 @@ export const getMonthsGroupedByYear = query({
 		]
 
 		// Convert to sorted array structure
-		const result = Array.from(yearMonthMap.entries())
-			.sort((a, b) => b[0] - a[0]) // Sort years descending (newest first)
-			.map(([year, monthsSet]) => {
-				const months = Array.from(monthsSet)
+		const result = Object.entries(yearMonthObj)
+			.map(([yearStr, monthsArray]) => {
+				const year = Number.parseInt(yearStr, 10)
+				const months = monthsArray
 					.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10)) // Sort months descending (newest first)
 					.map((month) => {
 						const monthIndex = Number.parseInt(month, 10) - 1
@@ -1653,6 +1653,7 @@ export const getMonthsGroupedByYear = query({
 					months,
 				}
 			})
+			.sort((a, b) => b.year - a.year) // Sort years descending (newest first)
 
 		return result
 	},

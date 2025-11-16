@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
 import { ExpenseListSkeleton } from "@/components/ExpenseListSkeleton";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
+import { FloatingProgressBar } from "@/components/FloatingProgressBar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
@@ -209,6 +210,7 @@ function MonthPage() {
 
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+			<FloatingProgressBar />
 			<div className="max-w-6xl mx-auto page-fade-in">
 				{/* Header */}
 				<div className="mb-8">

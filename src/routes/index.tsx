@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
 	Calendar,
 	ChevronRight,
@@ -10,8 +10,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
-import { ToastAction } from "@/components/ui/toast";
-import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
 
@@ -19,7 +17,6 @@ export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
 	const navigate = useNavigate();
-	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
 	const expensesFeed = useQuery(api.expenses.getExpensesFeed, {
 		limit: 12, // Show last 12 months
@@ -27,7 +24,6 @@ function HomePage() {
 	const addExpensesWithKnownCategories = useAction(
 		api.expenses.addExpensesWithKnownCategories,
 	);
-	const recordUpload = useMutation(api.expenses.recordUpload);
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
@@ -36,7 +32,7 @@ function HomePage() {
 		type: "success" | "error";
 		message: string;
 	} | null>(null);
-	const [uploadProgress, setUploadProgress] = useState<{
+	const [uploadProgress, _setUploadProgress] = useState<{
 		status: "idle" | "uploading" | "completed" | "failed";
 		currentFile: number;
 		totalFiles: number;
@@ -67,13 +63,6 @@ function HomePage() {
 			setIsUploading(true);
 			setUploadStatus(null);
 
-			// Initialize upload progress
-			setUploadProgress({
-				status: "uploading",
-				currentFile: 0,
-				totalFiles: files.length,
-			});
-
 			try {
 				// Upload files to API for parsing
 				const formData = new FormData();
@@ -93,136 +82,111 @@ function HomePage() {
 						type: "error",
 						message: result.errorMessage || "Upload failed",
 					});
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "failed",
-					}));
 					return;
 				}
 
-				// Process each file result
-				let totalExpenses = 0;
-				let totalErrors = 0;
-				let totalCategorizedFromCache = 0;
-				let totalUncategorized = 0;
-				let fileIndex = 0;
-				const uploadedMonths = new Set<string>(); // Track unique year-month combinations
+				// Collect all expenses from all files
+				const allExpenses: ParsedExpense[] = [];
+				const uploadedMonths = new Set<string>();
 
 				for (const fileResult of result.files) {
-					fileIndex++;
-
-					// Update progress for current file
-					setUploadProgress((prev) => ({
-						...prev,
-						currentFile: fileIndex,
-					}));
-
-					// Record upload metadata
-					await recordUpload({
-						filename: fileResult.filename,
-						size: fileResult.size,
-						status: fileResult.status,
-						errorMessage: fileResult.errorMessage,
-					});
-
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
+						allExpenses.push(...expenses);
 
-						// Track the months from these expenses
 						for (const expense of expenses) {
-							const yearMonth = `${expense.year}-${expense.month}`;
-							uploadedMonths.add(yearMonth);
+							uploadedMonths.add(`${expense.year}-${expense.month}`);
 						}
-
-						// Add expenses with known categories only (no AI)
-						const addResult = await addExpensesWithKnownCategories({
-							expenses,
-							userId: "anonymous",
-						});
-						totalExpenses += addResult.addedCount;
-						totalCategorizedFromCache += addResult.categorizedFromCache || 0;
-						totalUncategorized += addResult.uncategorizedCount || 0;
-					} else {
-						totalErrors++;
 					}
 				}
 
-				if (totalErrors > 0 && totalExpenses === 0) {
+				if (uploadedMonths.size === 0 || allExpenses.length === 0) {
 					setUploadStatus({
 						type: "error",
-						message: `Failed to parse ${totalErrors} file(s)`,
+						message: "No expenses found in uploaded files",
 					});
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "failed",
-					}));
-				} else {
-					const categorizedInfo =
-						totalCategorizedFromCache > 0 || totalUncategorized > 0
-							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} need categorization)`
-							: "";
-
-					setUploadStatus({
-						type: "success",
-						message: `Successfully added ${totalExpenses} expense(s)${categorizedInfo}${
-							totalErrors > 0 ? ` • ${totalErrors} file(s) had errors` : ""
-						}`,
-					});
-
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "completed",
-					}));
-
-					// Trigger transition then navigate to the oldest month
-					if (uploadedMonths.size > 0) {
-						const sortedMonths = Array.from(uploadedMonths).sort();
-						const oldestMonth = sortedMonths[0]; // YYYY-MM format sorts correctly
-
-						setIsTransitioning(true);
-
-						// Wait for shrink animation to complete before navigating
-						setTimeout(() => {
-							navigate({
-								to: "/m/$yearMonth",
-								params: { yearMonth: oldestMonth },
-							});
-						}, 600); // Match CSS transition duration
-					}
-
-					// Check for uncategorized expenses and show toast notification
-					if (totalUncategorized > 0) {
-						setTimeout(() => {
-							toast({
-								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} need${totalUncategorized === 1 ? "s" : ""} categorization`,
-								description: "Some merchants are not yet recognized.",
-								duration: 10000, // Show for 10 seconds
-								action: (
-									<ToastAction
-										altText="Categorize Now"
-										onClick={() => navigate({ to: "/admin" })}
-									>
-										Categorize Now
-									</ToastAction>
-								),
-							});
-						}, 2000);
-					}
+					return;
 				}
+
+				// Determine oldest month
+				const sortedMonths = Array.from(uploadedMonths).sort();
+				const oldestMonth = sortedMonths[0];
+
+				// Initialize progress in localStorage
+				localStorage.setItem(
+					"uploadProgress",
+					JSON.stringify({
+						status: "uploading",
+						current: 0,
+						total: allExpenses.length,
+						yearMonth: oldestMonth,
+					}),
+				);
+
+				// Trigger shrink animation and navigate
+				setIsTransitioning(true);
+				setTimeout(() => {
+					navigate({
+						to: "/m/$yearMonth",
+						params: { yearMonth: oldestMonth },
+					});
+
+					// Process expenses in background after navigation
+					setTimeout(async () => {
+						const BATCH_SIZE = 8;
+						let processed = 0;
+
+						for (let i = 0; i < allExpenses.length; i += BATCH_SIZE) {
+							const batch = allExpenses.slice(i, i + BATCH_SIZE);
+
+							await addExpensesWithKnownCategories({
+								expenses: batch,
+								userId: "anonymous",
+							});
+
+							processed += batch.length;
+
+							// Update progress
+							localStorage.setItem(
+								"uploadProgress",
+								JSON.stringify({
+									status: "uploading",
+									current: processed,
+									total: allExpenses.length,
+									yearMonth: oldestMonth,
+								}),
+							);
+							window.dispatchEvent(new Event("storage"));
+
+							// Delay between batches
+							if (i + BATCH_SIZE < allExpenses.length) {
+								await new Promise((resolve) => setTimeout(resolve, 200));
+							}
+						}
+
+						// Mark complete
+						localStorage.setItem(
+							"uploadProgress",
+							JSON.stringify({
+								status: "completed",
+								current: allExpenses.length,
+								total: allExpenses.length,
+								yearMonth: oldestMonth,
+							}),
+						);
+						window.dispatchEvent(new Event("storage"));
+					}, 100);
+				}, 300);
 			} catch (error) {
 				setUploadStatus({
 					type: "error",
 					message: error instanceof Error ? error.message : "Upload failed",
 				});
-				setUploadProgress((prev) => ({
-					...prev,
-					status: "failed",
-				}));
 			} finally {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithKnownCategories, recordUpload, toast, navigate],
+		[navigate, addExpensesWithKnownCategories],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
