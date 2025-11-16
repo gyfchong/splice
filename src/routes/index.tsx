@@ -100,14 +100,14 @@ function HomePage() {
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
 
-						// Add expenses with known categories only (no AI)
+						// Add expenses with cache/heuristics categorization and queue AI jobs
 						const addResult = await addExpensesWithKnownCategories({
 							expenses,
 							userId: "anonymous",
 						});
 						totalExpenses += addResult.addedCount;
-						totalCategorizedFromCache += addResult.categorizedFromCache || 0;
-						totalUncategorized += addResult.uncategorizedCount || 0;
+						totalCategorizedFromCache += (addResult.categorizedFromCache || 0) + (addResult.categorizedFromHeuristics || 0);
+						totalUncategorized += addResult.queuedForAI || 0;
 					} else {
 						totalErrors++;
 					}
@@ -125,7 +125,7 @@ function HomePage() {
 				} else {
 					const categorizedInfo =
 						totalCategorizedFromCache > 0 || totalUncategorized > 0
-							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} need categorization)`
+							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} queued for AI)`
 							: "";
 
 					setUploadStatus({
@@ -140,21 +140,13 @@ function HomePage() {
 						status: "completed",
 					}));
 
-					// Check for uncategorized expenses and show toast notification
+					// Check for queued expenses and show toast notification
 					if (totalUncategorized > 0) {
 						setTimeout(() => {
 							toast({
-								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} need${totalUncategorized === 1 ? "s" : ""} categorization`,
-								description: "Some merchants are not yet recognized.",
-								duration: 10000, // Show for 10 seconds
-								action: (
-									<ToastAction
-										altText="Categorize Now"
-										onClick={() => navigate({ to: "/admin" })}
-									>
-										Categorize Now
-									</ToastAction>
-								),
+								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} queued for AI categorization`,
+								description: "Background worker will categorize them shortly.",
+								duration: 8000, // Show for 8 seconds
 							});
 						}, 2000);
 					}

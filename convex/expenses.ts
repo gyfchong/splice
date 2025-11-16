@@ -278,7 +278,7 @@ export const addExpenses = mutation({
 					checked: expense.checked ?? false, // Use provided value or default to false
 					split: expense.split ?? false, // Use provided value or default to individual (100%)
 					uploadTimestamp: Date.now(),
-					category: expense.category,
+					category: expense.category ?? null, // Default to null (uncategorized) instead of undefined
 					merchantName: expense.merchantName,
 				})
 				newExpenseIds.push(expense.expenseId)
@@ -608,26 +608,21 @@ export const updateExpenseWithCategoryAndMerchant = internalMutation({
 })
 
 /**
- * Add expenses with automatic categorization
- * This action:
- * 1. Takes parsed expenses from PDF/CSV
- * 2. Saves ALL expenses to database first (graceful degradation)
- * 3. Normalizes merchant names
- * 4. Deduplicates merchants to reduce API calls
- * 5. Categorizes each UNIQUE merchant using AI or cached mappings (with delays)
- * 6. Updates expenses with categories
+ * @deprecated This function is deprecated in favor of background job queueing approach.
+ * Use `addExpensesWithKnownCategories` instead, which queues uncategorized expenses
+ * for background AI categorization rather than blocking upload.
  *
- * PHASE 1 IMPROVEMENTS:
- * - Saves expenses first to prevent data loss
- * - Batch deduplication (one API call per unique merchant)
- * - 4-second delays between AI calls to respect rate limits (15 req/min)
- * - Graceful error handling - continues on rate limit errors
+ * LEGACY: Add expenses with automatic categorization (DEPRECATED)
+ * This action used to:
+ * 1. Take parsed expenses from PDF/CSV
+ * 2. Save ALL expenses to database first (graceful degradation)
+ * 3. Normalize merchant names
+ * 4. Deduplicate merchants to reduce API calls
+ * 5. Categorize each UNIQUE merchant using AI or cached mappings (with delays)
+ * 6. Update expenses with categories
  *
- * PHASE 2 IMPROVEMENTS:
- * - Exponential backoff retry logic for failed categorizations
- * - Enhanced return type with detailed statistics
- * - Comprehensive logging with attempt tracking
- * - Success rate and retry metrics
+ * This is kept for reference and potential manual use only.
+ * Background workers now handle AI categorization automatically.
  */
 export const addExpensesWithCategories = action({
 	args: {
@@ -673,7 +668,7 @@ export const addExpensesWithCategories = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: undefined, // Will be filled in later
+			category: null, // Default to null (uncategorized)
 			split: expense.split ?? false, // Default to individual (100%) if not specified
 		}))
 
@@ -856,19 +851,15 @@ export const addExpensesWithCategories = action({
 })
 
 /**
- * PHASE 3: Add expenses with background categorization
+ * @deprecated This function is deprecated in favor of the simpler `addExpensesWithKnownCategories`.
+ * The functionality is now the same - both use heuristics and queue background jobs.
  *
- * This version uses the job queue for non-blocking categorization:
- * 1. Saves all expenses immediately
- * 2. Uses heuristic categorization for common merchants (instant)
- * 3. Queues AI categorization jobs for unknown merchants (background)
- * 4. Returns immediately without waiting for AI
+ * LEGACY: PHASE 3: Add expenses with background categorization (DEPRECATED)
  *
- * Benefits:
- * - No user-facing rate limit errors
- * - Instant upload completion
- * - 70%+ expenses categorized immediately via heuristics
- * - Remaining 30% categorized in background
+ * This function has been superseded by `addExpensesWithKnownCategories` which
+ * provides the same functionality without the complexity of smart auto-split prediction.
+ *
+ * Use `addExpensesWithKnownCategories` instead.
  */
 export const addExpensesWithBackgroundCategorization = action({
 	args: {
@@ -908,7 +899,7 @@ export const addExpensesWithBackgroundCategorization = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: undefined,
+			category: null, // Default to null (uncategorized)
 			split: expense.split ?? false, // Will be overridden by prediction if available
 		}))
 
@@ -1124,16 +1115,16 @@ export const getRateLimitStatus = query({
 })
 
 /**
- * Add expenses with known categories only (no AI)
+ * Add expenses with cache categorization and job queueing
  * This action:
  * 1. Saves ALL expenses to database first
  * 2. Normalizes merchant names
- * 3. Checks ONLY cached mappings (personal → global)
- * 4. Updates expenses with found categories (NO AI calls)
- * 5. Returns simple statistics
+ * 3. Checks ONLY cached mappings (personal → global) and heuristics
+ * 4. Updates expenses with found categories (NO immediate AI calls)
+ * 5. Queues uncategorized expenses for background AI categorization
+ * 6. Returns simple statistics
  *
- * Use this for bulk imports to avoid rate limits.
- * Uncategorized expenses can be categorized later using the admin tool.
+ * This ensures fast uploads while background workers handle AI categorization.
  */
 export const addExpensesWithKnownCategories = action({
 	args: {
@@ -1159,10 +1150,13 @@ export const addExpensesWithKnownCategories = action({
 		duplicateCount: number
 		newExpenseIds: string[]
 		categorizedFromCache: number
+		categorizedFromHeuristics: number
 		uncategorizedCount: number
+		queuedForAI: number
 		totalMerchants: number
 	}> => {
 		const { normalizeMerchant } = await import("./utils")
+		const { categorizeByHeuristics } = await import("./heuristics")
 
 		console.log(`[addExpensesWithKnownCategories] Saving ${args.expenses.length} expenses...`)
 
@@ -1170,7 +1164,7 @@ export const addExpensesWithKnownCategories = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: undefined, // Will be filled in if found in cache
+			category: null, // Default to null (uncategorized)
 			split: expense.split ?? true,
 		}))
 
@@ -1207,12 +1201,15 @@ export const addExpensesWithKnownCategories = action({
 			`[addExpensesWithKnownCategories] Deduplication: ${args.expenses.length} expenses → ${merchantGroups.size} unique merchants`,
 		)
 
-		// STEP 3: Check ONLY cached mappings (personal → global)
+		// STEP 3: Check cached mappings and heuristics, queue remaining for AI
 		let categorizedFromCache = 0
+		let categorizedFromHeuristics = 0
+		let queuedForAI = 0
 		let uncategorizedCount = 0
 
 		for (const [merchantName, expenses] of merchantGroups.entries()) {
 			let category: string | null = null
+			let source = ""
 
 			// Check personal mapping first
 			if (args.userId) {
@@ -1222,6 +1219,8 @@ export const addExpensesWithKnownCategories = action({
 				})
 				if (personal) {
 					category = personal.category
+					source = "personal"
+					categorizedFromCache++
 					console.log(`[addExpensesWithKnownCategories] ✓ Personal mapping: ${merchantName} → ${category}`)
 				}
 			}
@@ -1233,11 +1232,30 @@ export const addExpensesWithKnownCategories = action({
 				})
 				if (global) {
 					category = global.category
+					source = "global"
+					categorizedFromCache++
 					console.log(`[addExpensesWithKnownCategories] ✓ Global mapping: ${merchantName} → ${category}`)
 				}
 			}
 
-			// If we have a category from cache, apply it
+			// Try heuristic categorization
+			if (!category) {
+				category = categorizeByHeuristics(merchantName, expenses[0].name)
+				if (category) {
+					source = "heuristic"
+					categorizedFromHeuristics++
+					console.log(`[addExpensesWithKnownCategories] ✓ Heuristic categorized: ${merchantName} → ${category}`)
+
+					// Store heuristic result in global mapping for future use
+					await ctx.runMutation(internal.categorization.upsertGlobalMapping, {
+						merchantName,
+						category,
+						confidence: "ai",
+					})
+				}
+			}
+
+			// If we have a category (from cache or heuristic), apply it immediately
 			if (category) {
 				for (const expense of expenses) {
 					await ctx.runMutation(internal.expenses.updateExpenseCategory, {
@@ -1245,12 +1263,21 @@ export const addExpensesWithKnownCategories = action({
 						category,
 					})
 				}
-				categorizedFromCache++
-				console.log(`[addExpensesWithKnownCategories] ✓ Categorized ${expenses.length} expenses for ${merchantName}`)
+				console.log(`[addExpensesWithKnownCategories] ✓ Categorized ${expenses.length} expenses for ${merchantName} (${source})`)
 			} else {
-				// No category found - leave uncategorized
+				// No category found - queue for background AI categorization
 				uncategorizedCount++
-				console.log(`[addExpensesWithKnownCategories] ⚠ No category found for ${merchantName} (${expenses.length} expenses)`)
+				console.log(`[addExpensesWithKnownCategories] ⏳ Queueing ${merchantName} for AI categorization (${expenses.length} expenses)`)
+
+				for (const expense of expenses) {
+					await ctx.runMutation(internal.jobQueue.createJob, {
+						expenseId: expense.expenseId,
+						merchantName,
+						description: expense.name,
+						userId: args.userId,
+					})
+					queuedForAI++
+				}
 			}
 		}
 
@@ -1258,7 +1285,8 @@ export const addExpensesWithKnownCategories = action({
 		console.log(`[addExpensesWithKnownCategories] Total expenses: ${args.expenses.length}`)
 		console.log(`[addExpensesWithKnownCategories] Unique merchants: ${merchantGroups.size}`)
 		console.log(`[addExpensesWithKnownCategories] Categorized from cache: ${categorizedFromCache} merchants`)
-		console.log(`[addExpensesWithKnownCategories] Uncategorized: ${uncategorizedCount} merchants`)
+		console.log(`[addExpensesWithKnownCategories] Categorized from heuristics: ${categorizedFromHeuristics} merchants`)
+		console.log(`[addExpensesWithKnownCategories] Queued for AI: ${queuedForAI} expenses (${uncategorizedCount} merchants)`)
 		console.log(`[addExpensesWithKnownCategories] ==========================================`)
 
 		return {
@@ -1266,7 +1294,9 @@ export const addExpensesWithKnownCategories = action({
 			duplicateCount: saveResult.duplicateCount,
 			newExpenseIds: saveResult.newExpenseIds,
 			categorizedFromCache,
+			categorizedFromHeuristics,
 			uncategorizedCount,
+			queuedForAI,
 			totalMerchants: merchantGroups.size,
 		}
 	},

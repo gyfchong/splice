@@ -11,13 +11,14 @@ export const Route = createFileRoute("/admin")({
 
 function AdminPage() {
 	const stats = useQuery(api.categorization.getAdminDashboardStats);
+	const uncategorizedExpenses = useQuery(api.categorization.getUncategorizedExpensesByMerchant);
 
 	// Show "nothing to do" message if all categorized
 	if (stats && !stats.needsAttention) {
 		return <AllCaughtUp stats={stats} />;
 	}
 
-	return <AdminDashboard stats={stats} />;
+	return <AdminDashboard stats={stats} uncategorizedExpenses={uncategorizedExpenses} />;
 }
 
 function AllCaughtUp({ stats }: { stats: any }) {
@@ -44,7 +45,7 @@ function AllCaughtUp({ stats }: { stats: any }) {
 	);
 }
 
-function AdminDashboard({ stats }: { stats: any }) {
+function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncategorizedExpenses: any }) {
 	const runWorkflow = useAction(
 		api.categorization.runFullCategorizationWorkflow,
 	);
@@ -52,6 +53,7 @@ function AdminDashboard({ stats }: { stats: any }) {
 	const { toast } = useToast();
 	const [isProcessing, setIsProcessing] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
 
 	const handleRunWorkflow = async () => {
 		setIsProcessing(true);
@@ -146,15 +148,14 @@ function AdminDashboard({ stats }: { stats: any }) {
 				<div className="flex items-start justify-between mb-6">
 					<div>
 						<h2 className="text-2xl font-bold mb-2">
-							Auto-Categorize & Optimize
+							Manual AI Categorization (Immediate)
 						</h2>
 						<p className="text-zinc-600 max-w-2xl">
-							Automatically categorize{" "}
+							Manually trigger immediate AI categorization for{" "}
 							<span className="font-semibold text-cyan-600">
 								{stats.expenses.uncategorized}
 							</span>{" "}
-							uncategorized expenses using AI and rebuild merchant mappings to
-							improve future categorization accuracy.
+							uncategorized expenses. This processes them immediately instead of waiting for the background worker.
 						</p>
 					</div>
 				</div>
@@ -172,8 +173,8 @@ function AdminDashboard({ stats }: { stats: any }) {
 						</>
 					) : (
 						<>
-							<span className="mr-2">🚀</span>
-							Run Categorization Workflow
+							<span className="mr-2">⚡</span>
+							Run Immediate Categorization
 						</>
 					)}
 				</Button>
@@ -181,10 +182,8 @@ function AdminDashboard({ stats }: { stats: any }) {
 				{/* Info Note */}
 				<div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
 					<p className="text-sm text-blue-900">
-						<strong>ℹ️ What happens:</strong> The system will categorize
-						uncategorized expenses using AI (respecting rate limits), then
-						rebuild global merchant mappings from all categorized data to
-						improve future auto-categorization.
+						<strong>ℹ️ Note:</strong> The background worker automatically categorizes uncategorized expenses every 5 seconds and daily at 2 AM.
+						Use this button only if you need immediate results instead of waiting for the background process.
 					</p>
 				</div>
 			</div>
@@ -261,6 +260,72 @@ function AdminDashboard({ stats }: { stats: any }) {
 					<p className="text-xs text-zinc-500 mt-4">
 						Background jobs process automatically every 5 seconds (cron job)
 					</p>
+				</div>
+			)}
+
+			{/* Uncategorized Expenses List */}
+			{uncategorizedExpenses && uncategorizedExpenses.totalUncategorized > 0 && (
+				<div className="bg-white border border-zinc-200 rounded-lg p-6 mb-8">
+					<h3 className="text-lg font-semibold mb-4">
+						Uncategorized Expenses ({uncategorizedExpenses.totalUncategorized} expenses from {uncategorizedExpenses.uniqueMerchants} merchants)
+					</h3>
+					<p className="text-sm text-zinc-500 mb-4">
+						These expenses will be automatically categorized by the background worker. You can also manually categorize them if needed.
+					</p>
+					<div className="space-y-2 max-h-[500px] overflow-y-auto">
+						{uncategorizedExpenses.groups.map((group: any) => (
+							<div
+								key={group.merchantName}
+								className="border border-zinc-200 rounded-lg overflow-hidden"
+							>
+								<button
+									type="button"
+									onClick={() => setExpandedMerchant(
+										expandedMerchant === group.merchantName ? null : group.merchantName
+									)}
+									className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
+								>
+									<div className="flex-1 text-left">
+										<div className="font-medium text-zinc-900">
+											{group.merchantName}
+										</div>
+										<div className="text-sm text-zinc-500">
+											{group.expenseCount} expense{group.expenseCount === 1 ? "" : "s"} • ${group.totalAmount.toFixed(2)} total
+										</div>
+									</div>
+									<div className="text-zinc-400">
+										{expandedMerchant === group.merchantName ? "▼" : "▶"}
+									</div>
+								</button>
+
+								{expandedMerchant === group.merchantName && (
+									<div className="bg-zinc-50 p-4 border-t border-zinc-200">
+										<div className="space-y-2">
+											{group.expenses.slice(0, 10).map((expense: any) => (
+												<div
+													key={expense.expenseId}
+													className="flex items-center justify-between text-sm py-2 border-b border-zinc-200 last:border-0"
+												>
+													<div className="flex-1">
+														<div className="text-zinc-700">{expense.name}</div>
+														<div className="text-xs text-zinc-500">{expense.date}</div>
+													</div>
+													<div className="font-semibold text-zinc-900">
+														${expense.amount.toFixed(2)}
+													</div>
+												</div>
+											))}
+											{group.expenseCount > 10 && (
+												<div className="text-xs text-zinc-500 text-center pt-2">
+													... and {group.expenseCount - 10} more
+												</div>
+											)}
+										</div>
+									</div>
+								)}
+							</div>
+						))}
+					</div>
 				</div>
 			)}
 
