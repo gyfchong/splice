@@ -78,9 +78,9 @@ function MonthPage() {
 
 		switch (activeTab) {
 			case "mine":
-				return data.expenses.filter((e) => !(e.split ?? true));
+				return data.expenses.filter((e) => !(e.split ?? false));
 			case "shared":
-				return data.expenses.filter((e) => e.split ?? true);
+				return data.expenses.filter((e) => e.split ?? false);
 			default:
 				return data.expenses;
 		}
@@ -166,7 +166,7 @@ function MonthPage() {
 						) : (
 							<div className="space-y-3">
 								{filteredExpenses.map((expense) => {
-									const isSplit = expense.split ?? true;
+									const isSplit = expense.split ?? false;
 									const yourShare = isSplit
 										? expense.amount / 2
 										: expense.amount;
