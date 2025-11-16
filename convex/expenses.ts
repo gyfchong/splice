@@ -485,6 +485,12 @@ export const updateExpenseWithCategoryAndMerchant = internalMutation({
  * - Batch deduplication (one API call per unique merchant)
  * - 4-second delays between AI calls to respect rate limits (15 req/min)
  * - Graceful error handling - continues on rate limit errors
+ *
+ * PHASE 2 IMPROVEMENTS:
+ * - Exponential backoff retry logic for failed categorizations
+ * - Enhanced return type with detailed statistics
+ * - Comprehensive logging with attempt tracking
+ * - Success rate and retry metrics
  */
 export const addExpensesWithCategories = action({
 	args: {
@@ -502,6 +508,8 @@ export const addExpensesWithCategories = action({
 		),
 		userId: v.optional(v.string()),
 		delayMs: v.optional(v.number()), // Delay between AI calls (default: 4000ms)
+		enableRetry: v.optional(v.boolean()), // Enable exponential backoff retry (Phase 2)
+		maxRetries: v.optional(v.number()), // Max retry attempts (default: 3)
 	},
 	handler: async (
 		ctx,
@@ -513,6 +521,10 @@ export const addExpensesWithCategories = action({
 		categorizedCount: number
 		failedMerchants: string[]
 		totalMerchants: number
+		categorizedFromCache: number
+		categorizedFromAI: number
+		retriedMerchants: number
+		totalRetryAttempts: number
 	}> => {
 		const { normalizeMerchant } = await import("./utils")
 		const delayMs = args.delayMs ?? 4000 // Default 4 seconds (15 req/min for 16/min limit)
@@ -563,8 +575,19 @@ export const addExpensesWithCategories = action({
 		)
 
 		// STEP 3: Categorize each UNIQUE merchant with delays and error handling
+		// PHASE 2: Enhanced statistics tracking
 		let categorizedCount = 0
+		let categorizedFromCache = 0
+		let categorizedFromAI = 0
+		let retriedMerchants = 0
+		let totalRetryAttempts = 0
 		const failedMerchants: string[] = []
+		const enableRetry = args.enableRetry ?? true // Enable retry by default in Phase 2
+		const maxRetries = args.maxRetries ?? 3
+
+		console.log(
+			`[addExpensesWithCategories] PHASE 2 mode: enableRetry=${enableRetry}, maxRetries=${maxRetries}`,
+		)
 
 		let merchantIndex = 0
 		for (const [merchantName, expenses] of merchantGroups.entries()) {
@@ -575,22 +598,45 @@ export const addExpensesWithCategories = action({
 					`[addExpensesWithCategories] Categorizing merchant ${merchantIndex}/${merchantGroups.size}: ${merchantName} (${expenses.length} expenses)`,
 				)
 
-				// Get category for this merchant (checks cache first)
-				const category = await ctx.runAction(
+				// Get category for this merchant (checks cache first, optionally retries on failure)
+				const result = await ctx.runAction(
 					api.categorization.getCategoryForMerchant,
 					{
 						merchantName,
 						description: expenses[0].name,
 						userId: args.userId,
+						enableRetry,
+						maxRetries,
 					},
 				)
+
+				// Track statistics from categorization result
+				if (result.source === "personal" || result.source === "global") {
+					categorizedFromCache++
+					console.log(
+						`[addExpensesWithCategories] ✓ Cache hit (${result.source}) for ${merchantName}: ${result.category}`,
+					)
+				} else if (result.source === "ai" || result.source === "ai-retry") {
+					categorizedFromAI++
+					if (result.source === "ai-retry" && result.attempts && result.attempts > 1) {
+						retriedMerchants++
+						totalRetryAttempts += result.attempts - 1 // Subtract 1 to get retry count (not total attempts)
+						console.log(
+							`[addExpensesWithCategories] ✓ AI categorized ${merchantName} after ${result.attempts} attempts (${result.attempts - 1} retries)`,
+						)
+					} else {
+						console.log(
+							`[addExpensesWithCategories] ✓ AI categorized ${merchantName} on first attempt`,
+						)
+					}
+				}
 
 				// Update ALL expenses from this merchant with the category
 				for (const expense of expenses) {
 					try {
 						await ctx.runMutation(internal.expenses.updateExpenseCategory, {
 							expenseId: expense.expenseId,
-							category,
+							category: result.category,
 						})
 						categorizedCount++
 					} catch (updateError) {
@@ -602,12 +648,13 @@ export const addExpensesWithCategories = action({
 				}
 
 				console.log(
-					`[addExpensesWithCategories] ✓ Categorized ${merchantName} as "${category}" (${expenses.length} expenses)`,
+					`[addExpensesWithCategories] ✓ Categorized ${merchantName} as "${result.category}" (${expenses.length} expenses)`,
 				)
 
 				// CRITICAL: Add delay between AI calls to respect rate limits
 				// 4 seconds = 15 req/min (safely under 16 req/min limit)
-				if (merchantIndex < merchantGroups.size && delayMs > 0) {
+				// Only delay if we actually made an AI call (not cached)
+				if (merchantIndex < merchantGroups.size && delayMs > 0 && (result.source === "ai" || result.source === "ai-retry")) {
 					console.log(`[addExpensesWithCategories] Waiting ${delayMs}ms before next API call...`)
 					await new Promise((resolve) => setTimeout(resolve, delayMs))
 				}
@@ -639,13 +686,22 @@ export const addExpensesWithCategories = action({
 		}
 
 		const successRate = Math.round((categorizedCount / args.expenses.length) * 100)
-		console.log(
-			`[addExpensesWithCategories] Categorization complete: ${categorizedCount}/${args.expenses.length} expenses (${successRate}%)`,
-		)
 
+		// PHASE 2: Comprehensive logging with detailed statistics
+		console.log(`[addExpensesWithCategories] ========== CATEGORIZATION SUMMARY ==========`)
+		console.log(`[addExpensesWithCategories] Total expenses: ${args.expenses.length}`)
+		console.log(`[addExpensesWithCategories] Unique merchants: ${merchantGroups.size}`)
+		console.log(`[addExpensesWithCategories] Categorized: ${categorizedCount}/${args.expenses.length} (${successRate}%)`)
+		console.log(`[addExpensesWithCategories] - From cache: ${categorizedFromCache} merchants`)
+		console.log(`[addExpensesWithCategories] - From AI: ${categorizedFromAI} merchants`)
+		if (retriedMerchants > 0) {
+			console.log(`[addExpensesWithCategories] - Retried: ${retriedMerchants} merchants (${totalRetryAttempts} total retry attempts)`)
+			console.log(`[addExpensesWithCategories] - Average retries per failed merchant: ${(totalRetryAttempts / retriedMerchants).toFixed(1)}`)
+		}
 		if (failedMerchants.length > 0) {
 			console.warn(`[addExpensesWithCategories] Failed merchants (${failedMerchants.length}):`, failedMerchants)
 		}
+		console.log(`[addExpensesWithCategories] ==========================================`)
 
 		return {
 			addedCount: saveResult.addedCount,
@@ -654,6 +710,10 @@ export const addExpensesWithCategories = action({
 			categorizedCount,
 			failedMerchants,
 			totalMerchants: merchantGroups.size,
+			categorizedFromCache,
+			categorizedFromAI,
+			retriedMerchants,
+			totalRetryAttempts,
 		}
 	},
 })

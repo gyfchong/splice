@@ -44,6 +44,10 @@ function HomePage() {
 		totalExpenses: number;
 		failedMerchants: string[];
 		totalMerchants: number;
+		categorizedFromCache: number;
+		categorizedFromAI: number;
+		retriedMerchants: number;
+		totalRetryAttempts: number;
 	}>({
 		status: "idle",
 		currentFile: 0,
@@ -52,6 +56,10 @@ function HomePage() {
 		totalExpenses: 0,
 		failedMerchants: [],
 		totalMerchants: 0,
+		categorizedFromCache: 0,
+		categorizedFromAI: 0,
+		retriedMerchants: 0,
+		totalRetryAttempts: 0,
 	});
 
 	const handleFiles = useCallback(
@@ -68,6 +76,10 @@ function HomePage() {
 				totalExpenses: 0,
 				failedMerchants: [],
 				totalMerchants: 0,
+				categorizedFromCache: 0,
+				categorizedFromAI: 0,
+				retriedMerchants: 0,
+				totalRetryAttempts: 0,
 			});
 
 			try {
@@ -101,6 +113,10 @@ function HomePage() {
 				let totalErrors = 0;
 				let totalCategorized = 0;
 				let totalMerchants = 0;
+				let totalFromCache = 0;
+				let totalFromAI = 0;
+				let totalRetried = 0;
+				let totalRetryAttempts = 0;
 				const allFailedMerchants: string[] = [];
 				let earliestNewMonth: { year: number; month: string } | null = null;
 				let fileIndex = 0;
@@ -125,11 +141,15 @@ function HomePage() {
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
 
-						// Add expenses to Convex with automatic categorization
+						// Add expenses to Convex with automatic categorization (Phase 2: with retry)
 						const addResult = await addExpensesWithCategories({ expenses });
 						totalExpenses += addResult.addedCount;
 						totalCategorized += addResult.categorizedCount || 0;
 						totalMerchants += addResult.totalMerchants || 0;
+						totalFromCache += addResult.categorizedFromCache || 0;
+						totalFromAI += addResult.categorizedFromAI || 0;
+						totalRetried += addResult.retriedMerchants || 0;
+						totalRetryAttempts += addResult.totalRetryAttempts || 0;
 
 						// Track failed merchants
 						if (
@@ -139,13 +159,17 @@ function HomePage() {
 							allFailedMerchants.push(...addResult.failedMerchants);
 						}
 
-						// Update progress with categorization results
+						// Update progress with categorization results (Phase 2: enhanced stats)
 						setCategorizationProgress((prev) => ({
 							...prev,
 							categorizedCount: totalCategorized,
 							totalExpenses: totalExpenses,
 							totalMerchants: totalMerchants,
 							failedMerchants: allFailedMerchants,
+							categorizedFromCache: totalFromCache,
+							categorizedFromAI: totalFromAI,
+							retriedMerchants: totalRetried,
+							totalRetryAttempts: totalRetryAttempts,
 						}));
 
 						// Track earliest new month
@@ -394,6 +418,15 @@ function HomePage() {
 											Successfully categorized{" "}
 											{categorizationProgress.categorizedCount} expenses across{" "}
 											{categorizationProgress.totalMerchants} merchants
+											{categorizationProgress.categorizedFromCache > 0 && (
+												<span className="block text-xs text-white/70 mt-1">
+													{categorizationProgress.categorizedFromCache} from cache •{" "}
+													{categorizationProgress.categorizedFromAI} from AI
+													{categorizationProgress.retriedMerchants > 0 && (
+														<> • {categorizationProgress.retriedMerchants} retried ({categorizationProgress.totalRetryAttempts} retry attempts)</>
+													)}
+												</span>
+											)}
 										</p>
 									</div>
 								)}
@@ -472,6 +505,10 @@ function HomePage() {
 											totalExpenses: 0,
 											failedMerchants: [],
 											totalMerchants: 0,
+											categorizedFromCache: 0,
+											categorizedFromAI: 0,
+											retriedMerchants: 0,
+											totalRetryAttempts: 0,
 										})
 									}
 									className="text-white hover:text-white/80 transition-colors"
