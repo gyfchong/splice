@@ -17,7 +17,12 @@ import { categorizeByHeuristics } from "./heuristics"
  */
 export const processJobs = internalAction({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{
+		processed: number
+		succeeded?: number
+		failed?: number
+		duration: number
+	}> => {
 		const startTime = Date.now()
 
 		// Get pending jobs (limit to 1 per run for safety)
@@ -143,7 +148,12 @@ export const processJobs = internalAction({
  */
 export const processPendingJobsBatch = internalAction({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{
+		totalProcessed: number
+		totalSucceeded: number
+		totalFailed: number
+		duration: number
+	}> => {
 		const startTime = Date.now()
 		let totalProcessed = 0
 		let totalSucceeded = 0

@@ -9,7 +9,13 @@
  */
 
 import type * as categorization from "../categorization.js";
+import type * as categorizationWorker from "../categorizationWorker.js";
+import type * as cronJobs from "../cronJobs.js";
+import type * as crons from "../crons.js";
 import type * as expenses from "../expenses.js";
+import type * as heuristics from "../heuristics.js";
+import type * as jobQueue from "../jobQueue.js";
+import type * as rateLimit from "../rateLimit.js";
 import type * as utils from "../utils.js";
 
 import type {
@@ -20,7 +26,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   categorization: typeof categorization;
+  categorizationWorker: typeof categorizationWorker;
+  cronJobs: typeof cronJobs;
+  crons: typeof crons;
   expenses: typeof expenses;
+  heuristics: typeof heuristics;
+  jobQueue: typeof jobQueue;
+  rateLimit: typeof rateLimit;
   utils: typeof utils;
 }>;
 

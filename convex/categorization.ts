@@ -1,4 +1,4 @@
-import { action, internalMutation, mutation, query } from "./_generated/server"
+import { action, internalAction, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { api, internal } from "./_generated/api"
 
@@ -157,7 +157,7 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
  * @param maxRetries - Maximum number of retry attempts (default: 3)
  * @returns Category name or "Other" as fallback
  */
-export const categorizeMerchantWithRetry = action({
+export const categorizeMerchantWithRetry = internalAction({
 	args: {
 		merchantName: v.string(),
 		description: v.string(),
@@ -507,7 +507,7 @@ export const getCategoryForMerchant = action({
 			if (enableRetry) {
 				// PHASE 2: Use retry logic with exponential backoff
 				console.log(`[getCategoryForMerchant] Using retry logic (max ${maxRetries} attempts)`)
-				const retryResult = await ctx.runAction(api.categorization.categorizeMerchantWithRetry, {
+				const retryResult = await ctx.runAction(internal.categorization.categorizeMerchantWithRetry, {
 					merchantName,
 					description,
 					maxRetries,

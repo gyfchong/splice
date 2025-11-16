@@ -928,7 +928,7 @@ export const addExpensesWithBackgroundCategorization = action({
 export const getJobQueueStats = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.runQuery(internal.jobQueue.getJobStats, {})
+		return await ctx.runQuery((internal as any).jobQueue.getJobStats, {})
 	},
 })
 
@@ -939,6 +939,6 @@ export const getJobQueueStats = query({
 export const getRateLimitStatus = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.runQuery(internal.rateLimit.getAllRateLimitStatus, {})
+		return await ctx.runQuery((internal as any).rateLimit.getAllRateLimitStatus, {})
 	},
 })

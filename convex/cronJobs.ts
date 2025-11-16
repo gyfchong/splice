@@ -6,6 +6,7 @@
 
 import { internalAction, internalQuery } from "./_generated/server"
 import { internal } from "./_generated/api"
+import type { api } from "./_generated/api"
 import { categorizeByHeuristics } from "./heuristics"
 
 /**
@@ -64,7 +65,7 @@ export const dailyCategorization = internalAction({
 		const startTime = Date.now()
 
 		// Find uncategorized expenses
-		const result = await ctx.runQuery(internal.cronJobs.findUncategorizedExpenses, {})
+		const result = await ctx.runQuery((internal as any).cronJobs.findUncategorizedExpenses, {})
 
 		if (result.totalUncategorized === 0) {
 			return {
@@ -134,7 +135,7 @@ export const dailyCleanup = internalAction({
 
 		// Clean up completed jobs
 		const jobCleanup = await ctx.runMutation(
-			internal.jobQueue.cleanupCompletedJobs,
+			(internal as any).jobQueue.cleanupCompletedJobs,
 			{},
 		)
 
@@ -142,6 +143,16 @@ export const dailyCleanup = internalAction({
 			deletedJobs: jobCleanup.deleted,
 			duration: Date.now() - startTime,
 		}
+	},
+})
+
+/**
+ * Internal query to get all expenses with their categories
+ */
+export const getAllExpensesForStats = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		return await ctx.db.query("expenses").collect()
 	},
 })
 
@@ -157,11 +168,11 @@ export const weeklyStats = internalAction({
 		const startTime = Date.now()
 
 		// Get all expenses
-		const allExpenses = await ctx.db.query("expenses").collect()
+		const allExpenses = await ctx.runQuery((internal as any).cronJobs.getAllExpensesForStats, {})
 
 		// Calculate statistics
 		const totalExpenses = allExpenses.length
-		const categorizedExpenses = allExpenses.filter((e) => e.category).length
+		const categorizedExpenses = allExpenses.filter((e: any) => e.category).length
 		const uncategorizedExpenses = totalExpenses - categorizedExpenses
 
 		// Category breakdown
@@ -174,16 +185,16 @@ export const weeklyStats = internalAction({
 		}
 
 		// Job queue stats
-		const jobStats = await ctx.runQuery(internal.jobQueue.getJobStats, {})
+		const jobStats = await ctx.runQuery((internal as any).jobQueue.getJobStats, {})
 
 		// Rate limit stats
 		const rateLimitStats = await ctx.runQuery(
-			internal.rateLimit.getAllRateLimitStatus,
+			(internal as any).rateLimit.getAllRateLimitStatus,
 			{},
 		)
 
 		// Heuristic stats
-		const heuristicStats = categorizeByHeuristics.__heuristicStats || {
+		const heuristicStats = (categorizeByHeuristics as any).__heuristicStats || {
 			note: "Stats not available (function doesn't track)",
 		}
 
