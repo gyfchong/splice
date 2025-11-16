@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import {
 	Calendar,
 	ChevronLeft,
 	Minus,
+	RefreshCw,
 	TrendingDown,
 	TrendingUp,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/$year")({
@@ -21,6 +22,16 @@ function YearPage() {
 	// Session tracking for unseen expenses
 	const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 	const [visitedMonths, setVisitedMonths] = useState<string[]>([]);
+
+	// Categorization
+	const categorizeExpenses = useAction(
+		api.categorization.categorizeExistingExpenses,
+	);
+	const [isCategorizing, setIsCategorizing] = useState(false);
+	const [categorizeStatus, setCategorizeStatus] = useState<{
+		type: "success" | "error";
+		message: string;
+	} | null>(null);
 
 	useEffect(() => {
 		// Initialize session start time from localStorage or create new
@@ -43,6 +54,43 @@ function YearPage() {
 		api.expenses.getYearSummary,
 		sessionStartTime !== null ? { year: yearNum, sessionStartTime } : "skip",
 	);
+
+	const handleCategorizeExpenses = useCallback(async () => {
+		setIsCategorizing(true);
+		setCategorizeStatus(null);
+
+		try {
+			const result = await categorizeExpenses({ userId: "anonymous" });
+
+			// Check if we hit rate limiting
+			if (result.rateLimitResetTime) {
+				const resetDate = new Date(result.rateLimitResetTime);
+				const now = new Date();
+				const minutesUntilReset = Math.ceil(
+					(resetDate.getTime() - now.getTime()) / 60000,
+				);
+				const resetTimeStr = resetDate.toLocaleTimeString();
+
+				setCategorizeStatus({
+					type: "error",
+					message: `Rate limit reached. Categorized ${result.newlyCategorized} expenses before limit. You can resume at ${resetTimeStr} (in ${minutesUntilReset} minute${minutesUntilReset !== 1 ? "s" : ""}). Free tier limit: 16 requests/minute.`,
+				});
+			} else {
+				setCategorizeStatus({
+					type: "success",
+					message: `Categorization complete: ${result.totalExpenses} total expenses, ${result.alreadyCategorized} already categorized, ${result.newlyCategorized} newly categorized${result.errors > 0 ? `, ${result.errors} errors` : ""}`,
+				});
+			}
+		} catch (error) {
+			setCategorizeStatus({
+				type: "error",
+				message:
+					error instanceof Error ? error.message : "Categorization failed",
+			});
+		} finally {
+			setIsCategorizing(false);
+		}
+	}, [categorizeExpenses]);
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
@@ -142,6 +190,46 @@ function YearPage() {
 									</div>
 								</div>
 							</div>
+						</div>
+
+						{/* Categorize Expenses Section */}
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 mb-8">
+							<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+								<div>
+									<h3 className="text-lg font-semibold text-white mb-2">
+										Categorize Uncategorized Expenses
+									</h3>
+									<p className="text-gray-400 text-sm">
+										Use AI to automatically categorize expenses that don't have categories yet.
+									</p>
+									<p className="text-sm text-yellow-400 mt-1">
+										⚠️ Rate Limit: 16 requests/minute (free tier)
+									</p>
+								</div>
+								<button
+									type="button"
+									onClick={handleCategorizeExpenses}
+									disabled={isCategorizing}
+									className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
+								>
+									<RefreshCw
+										className={`w-5 h-5 ${isCategorizing ? "animate-spin" : ""}`}
+									/>
+									{isCategorizing ? "Categorizing..." : "Categorize Expenses"}
+								</button>
+							</div>
+
+							{categorizeStatus && (
+								<div
+									className={`mt-4 p-4 rounded-lg ${
+										categorizeStatus.type === "success"
+											? "bg-green-500/10 border border-green-500/50 text-green-400"
+											: "bg-red-500/10 border border-red-500/50 text-red-400"
+									}`}
+								>
+									{categorizeStatus.message}
+								</div>
+							)}
 						</div>
 
 						{/* Error Message */}
