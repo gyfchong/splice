@@ -243,12 +243,11 @@ function HomePage() {
 	);
 
 	return (
-		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
 			{/* Upload Progress Banner - ARIA Live Region */}
 			{uploadProgress.status === "uploading" && (
-				<div
+				<output
 					className="fixed top-0 left-0 right-0 z-50 shadow-lg transition-all bg-blue-500/90 backdrop-blur-sm"
-					role="status"
 					aria-live="polite"
 					aria-atomic="true"
 				>
@@ -266,7 +265,7 @@ function HomePage() {
 							</div>
 						</div>
 					</div>
-				</div>
+				</output>
 			)}
 
 			<div
@@ -280,8 +279,8 @@ function HomePage() {
 				</p>
 
 				{/* Upload Area - Accessible File Upload */}
-				<div
-					role="button"
+				<button
+					type="button"
 					tabIndex={isUploading ? -1 : 0}
 					aria-label="File upload area. Press Enter or Space to select files, or drag and drop files here."
 					aria-describedby="upload-instructions"
@@ -330,12 +329,11 @@ function HomePage() {
 							disabled={isUploading}
 						/>
 					</div>
-				</div>
+				</button>
 
 				{/* Upload Status - ARIA Live Region */}
 				{uploadStatus && (
-					<div
-						role="status"
+					<output
 						aria-live="polite"
 						aria-atomic="true"
 						className={`mb-8 p-4 rounded-lg ${
@@ -345,7 +343,7 @@ function HomePage() {
 						}`}
 					>
 						{uploadStatus.message}
-					</div>
+					</output>
 				)}
 
 				{/* Monthly Expenses Chart */}
