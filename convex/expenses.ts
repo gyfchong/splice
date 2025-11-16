@@ -20,6 +20,72 @@ export const getAllExpenses = query({
 	},
 })
 
+// Get merchant's split pattern from recent history for smart auto-split prediction
+export const getMerchantSplitPattern = query({
+	args: {
+		merchantName: v.string(),
+		lookbackMonths: v.number(), // Usually 2
+		fromDate: v.string(), // YYYY-MM-DD format
+	},
+	handler: async (ctx, args) => {
+		const { calculateCutoffDate } = await import("./utils")
+
+		// Calculate date N months ago
+		const cutoffDate = calculateCutoffDate(args.fromDate, args.lookbackMonths)
+
+		// Get all expenses from this merchant in lookback period
+		const historicalExpenses = await ctx.db
+			.query("expenses")
+			.filter((q) =>
+				q.and(
+					q.eq(q.field("merchantName"), args.merchantName),
+					q.gte(q.field("date"), cutoffDate),
+					q.lt(q.field("date"), args.fromDate), // Don't include expenses on same day or later
+				),
+			)
+			.collect()
+
+		if (historicalExpenses.length === 0) {
+			return {
+				suggestedSplit: true, // default to split
+				confidence: "none" as const,
+				sampleSize: 0,
+				splitPercentage: 0,
+			}
+		}
+
+		// Count split vs individual
+		const splitCount = historicalExpenses.filter((e) => e.split ?? true).length
+		const individualCount = historicalExpenses.length - splitCount
+		const splitPercentage = splitCount / historicalExpenses.length
+
+		// Determine suggestion based on 80% threshold
+		if (splitPercentage >= 0.8) {
+			return {
+				suggestedSplit: true,
+				confidence: "high" as const,
+				sampleSize: historicalExpenses.length,
+				splitPercentage: Math.round(splitPercentage * 100) / 100,
+			}
+		}
+		if (splitPercentage <= 0.2) {
+			return {
+				suggestedSplit: false,
+				confidence: "high" as const,
+				sampleSize: historicalExpenses.length,
+				splitPercentage: Math.round(splitPercentage * 100) / 100,
+			}
+		}
+		// Mixed pattern - default to split
+		return {
+			suggestedSplit: true,
+			confidence: "low" as const,
+			sampleSize: historicalExpenses.length,
+			splitPercentage: Math.round(splitPercentage * 100) / 100,
+		}
+	},
+})
+
 // Get expenses grouped by month for a specific year
 export const getExpensesByYear = query({
 	args: { year: v.number() },
@@ -264,11 +330,22 @@ export const getYearSummary = query({
 			const monthNum = (index + 1).toString().padStart(2, "0")
 			const monthExpenses = expenses.filter((e) => e.month === monthNum)
 
-			// Calculate amount shared (checked expenses / 2)
-			const amountShared =
-				monthExpenses
-					.filter((e) => e.checked)
-					.reduce((sum, e) => sum + e.amount, 0) / 2
+			// Calculate all totals
+			let totalPersonal = 0
+			let totalShared = 0
+			let totalMine = 0
+
+			for (const expense of monthExpenses) {
+				const isSplit = expense.split ?? true
+				if (isSplit) {
+					const share = expense.amount / 2
+					totalShared += share
+					totalPersonal += share
+				} else {
+					totalMine += expense.amount
+					totalPersonal += expense.amount
+				}
+			}
 
 			// Check if there are unseen expenses
 			const hasUnseen = args.sessionStartTime
@@ -282,33 +359,44 @@ export const getYearSummary = query({
 			return {
 				month: monthName,
 				monthNumber: monthNum,
-				amountShared: Math.round(amountShared * 100) / 100,
-				numberOfExpenses: monthExpenses.length,
+				totals: {
+					all: Math.round(totalPersonal * 100) / 100,
+					mine: Math.round(totalMine * 100) / 100,
+					shared: Math.round(totalShared * 100) / 100,
+				},
+				counts: {
+					all: monthExpenses.length,
+					mine: monthExpenses.filter((e) => !(e.split ?? true)).length,
+					shared: monthExpenses.filter((e) => e.split ?? true).length,
+				},
 				showGreenDot: hasUnseen,
 			}
 		})
 
 		// Calculate yearly totals
-		const totalShared = months.reduce((sum, m) => sum + m.amountShared, 0)
-		const averagePerMonth = Math.round((totalShared / 12) * 100) / 100
+		const totalAll = months.reduce((sum, m) => sum + m.totals.all, 0)
+		const totalShared = months.reduce((sum, m) => sum + m.totals.shared, 0)
+		const totalMine = months.reduce((sum, m) => sum + m.totals.mine, 0)
+		const averagePerMonth = Math.round((totalAll / 12) * 100) / 100
 
 		// Calculate previous year total for comparison
-		const previousYearTotal =
-			previousYearExpenses
-				.filter((e) => e.checked)
-				.reduce((sum, e) => sum + e.amount, 0) / 2
+		let previousYearTotal = 0
+		for (const expense of previousYearExpenses) {
+			const isSplit = expense.split ?? true
+			previousYearTotal += isSplit ? expense.amount / 2 : expense.amount
+		}
 
 		let changeComparedToPreviousYear:
 			| { direction: string; icon: string; color: string }
 			| undefined
 		if (previousYearTotal > 0) {
-			if (totalShared > previousYearTotal) {
+			if (totalAll > previousYearTotal) {
 				changeComparedToPreviousYear = {
 					direction: "increase",
 					icon: "up",
 					color: "green",
 				}
-			} else if (totalShared < previousYearTotal) {
+			} else if (totalAll < previousYearTotal) {
 				changeComparedToPreviousYear = {
 					direction: "decrease",
 					icon: "down",
@@ -331,7 +419,11 @@ export const getYearSummary = query({
 
 		return {
 			year: args.year,
-			totalShared: Math.round(totalShared * 100) / 100,
+			totals: {
+				all: Math.round(totalAll * 100) / 100,
+				mine: Math.round(totalMine * 100) / 100,
+				shared: Math.round(totalShared * 100) / 100,
+			},
 			averagePerMonth,
 			changeComparedToPreviousYear,
 			months,
@@ -356,17 +448,37 @@ export const getMonthExpenses = query({
 		// Sort by date
 		const sortedExpenses = expenses.sort((a, b) => a.date.localeCompare(b.date))
 
-		// Calculate total share
-		const totalShare =
-			sortedExpenses
-				.filter((e) => e.checked)
-				.reduce((sum, e) => sum + e.amount, 0) / 2
+		// Calculate all three totals
+		let totalPersonal = 0 // Your total spending (shared + mine)
+		let totalShared = 0 // Your share of split expenses (amount / 2)
+		let totalMine = 0 // Your individual expenses (amount @ 100%)
+
+		for (const expense of sortedExpenses) {
+			const isSplit = expense.split ?? true
+			if (isSplit) {
+				const share = expense.amount / 2
+				totalShared += share
+				totalPersonal += share
+			} else {
+				totalMine += expense.amount
+				totalPersonal += expense.amount
+			}
+		}
 
 		return {
 			year: args.year,
 			month: args.month,
 			expenses: sortedExpenses,
-			totalShare: Math.round(totalShare * 100) / 100,
+			totals: {
+				all: Math.round(totalPersonal * 100) / 100, // Total personal spending
+				mine: Math.round(totalMine * 100) / 100, // 100% expenses only
+				shared: Math.round(totalShared * 100) / 100, // 50% of split expenses
+			},
+			counts: {
+				all: expenses.length,
+				mine: expenses.filter((e) => !(e.split ?? true)).length,
+				shared: expenses.filter((e) => e.split ?? true).length,
+			},
 		}
 	},
 })
@@ -384,8 +496,6 @@ export const getMonthlyTotals = query({
 		>()
 
 		for (const expense of expenses) {
-			if (!expense.checked) continue // Only count checked expenses
-
 			const key = `${expense.year}-${expense.month}`
 			const existing = monthlyMap.get(key) || {
 				year: expense.year,
@@ -767,23 +877,66 @@ export const addExpensesWithBackgroundCategorization = action({
 
 		console.log(`[Phase 3] Saving ${args.expenses.length} expenses with background categorization...`)
 
-		// STEP 1: Save ALL expenses immediately
+		// STEP 1: Predict split status based on merchant history
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
 			category: undefined,
-			split: expense.split ?? true,
+			split: expense.split ?? true, // Will be overridden by prediction if available
 		}))
 
+		// STEP 1.5: Smart auto-split prediction for each expense
+		const expensesWithPredictedSplit = await Promise.all(
+			expensesWithMerchants.map(async (expense) => {
+				// If split was explicitly set in the import, keep it
+				if (args.expenses.find((e) => e.expenseId === expense.expenseId)?.split !== undefined) {
+					console.log(
+						`[Smart Split] ${expense.merchantName}: using explicit value ${expense.split}`,
+					)
+					return expense
+				}
+
+				// Get merchant's historical pattern
+				const pattern = await ctx.runQuery(api.expenses.getMerchantSplitPattern, {
+					merchantName: expense.merchantName,
+					lookbackMonths: 2,
+					fromDate: expense.date,
+				})
+
+				// Apply prediction if we have high confidence
+				let finalSplit = expense.split // default
+				if (pattern.confidence === "high") {
+					finalSplit = pattern.suggestedSplit
+					console.log(
+						`[Smart Split] ${expense.merchantName}: predicted ${finalSplit} (${pattern.sampleSize} samples, ${(pattern.splitPercentage * 100).toFixed(0)}% split)`,
+					)
+				} else if (pattern.confidence === "low") {
+					console.log(
+						`[Smart Split] ${expense.merchantName}: mixed history, defaulting to split=true (${pattern.sampleSize} samples, ${(pattern.splitPercentage * 100).toFixed(0)}% split)`,
+					)
+				} else {
+					console.log(
+						`[Smart Split] ${expense.merchantName}: no history, defaulting to split=true`,
+					)
+				}
+
+				return {
+					...expense,
+					split: finalSplit,
+				}
+			}),
+		)
+
+		// STEP 2: Save ALL expenses immediately
 		const saveResult = await ctx.runMutation(api.expenses.addExpenses, {
-			expenses: expensesWithMerchants,
+			expenses: expensesWithPredictedSplit,
 		})
 
 		console.log(
 			`[Phase 3] Saved ${saveResult.addedCount} new expenses, ${saveResult.duplicateCount} duplicates`,
 		)
 
-		// STEP 2: Deduplicate merchants
+		// STEP 3: Deduplicate merchants
 		const merchantGroups = new Map<
 			string,
 			Array<{
@@ -793,7 +946,7 @@ export const addExpensesWithBackgroundCategorization = action({
 			}>
 		>()
 
-		for (const expense of expensesWithMerchants) {
+		for (const expense of expensesWithPredictedSplit) {
 			if (!merchantGroups.has(expense.merchantName)) {
 				merchantGroups.set(expense.merchantName, [])
 			}

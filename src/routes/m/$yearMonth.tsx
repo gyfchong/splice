@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronLeft, Tag, User, Users } from "lucide-react";
+import { ChevronLeft, Tag, User, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
+import { ExpenseTabs } from "@/components/ExpenseTabs";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
@@ -18,12 +19,13 @@ function MonthPage() {
 		year: yearNum,
 		month,
 	});
-	const toggleExpense = useMutation(api.expenses.toggleExpense);
 	const toggleSplit = useMutation(api.expenses.toggleSplit);
-	const toggleAllExpenses = useMutation(api.expenses.toggleAllExpenses);
 	const updateCategoryWithMapping = useAction(
 		api.categorization.updateExpenseCategoryWithMapping,
 	);
+
+	// Tab state
+	const [activeTab, setActiveTab] = useState<"all" | "mine" | "shared">("all");
 
 	// Track which expense is being updated
 	const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(
@@ -41,14 +43,6 @@ function MonthPage() {
 			localStorage.setItem(visitedMonthsKey, JSON.stringify(visitedMonths));
 		}
 	}, [year, month]);
-
-	const handleToggle = async (expenseId: string) => {
-		try {
-			await toggleExpense({ expenseId });
-		} catch (error) {
-			console.error("Failed to toggle expense:", error);
-		}
-	};
 
 	const handleToggleSplit = async (expenseId: string) => {
 		try {
@@ -78,23 +72,19 @@ function MonthPage() {
 		}
 	};
 
-	// Check if all expenses are checked
-	const allChecked = useMemo(() => {
-		if (!data || data.expenses.length === 0) return false;
-		return data.expenses.every((expense) => expense.checked);
-	}, [data]);
+	// Filter expenses based on active tab
+	const filteredExpenses = useMemo(() => {
+		if (!data) return [];
 
-	const handleToggleAll = async () => {
-		try {
-			await toggleAllExpenses({
-				year: yearNum,
-				month,
-				checked: !allChecked,
-			});
-		} catch (error) {
-			console.error("Failed to toggle all expenses:", error);
+		switch (activeTab) {
+			case "mine":
+				return data.expenses.filter((e) => !(e.split ?? true));
+			case "shared":
+				return data.expenses.filter((e) => e.split ?? true);
+			default:
+				return data.expenses;
 		}
-	};
+	}, [data, activeTab]);
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
@@ -159,111 +149,101 @@ function MonthPage() {
 					</div>
 				) : (
 					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
-						{/* Month Header */}
-						<div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-600">
-							<h2 className="text-2xl font-bold text-white flex items-center gap-2">
-								<Calendar className="w-6 h-6 text-cyan-400" />
-								Expenses
-							</h2>
-							<div className="text-right">
-								<div className="text-sm text-gray-400 mb-1">Your Share</div>
-								<div className="text-2xl font-bold text-cyan-400">
-									{formatCurrency(data.totalShare)}
-								</div>
-							</div>
-						</div>
-
-						{/* Check All */}
-						<div className="mb-4 pb-3 border-b border-slate-600/50">
-							<label className="flex items-center gap-3 cursor-pointer group">
-								<input
-									type="checkbox"
-									checked={allChecked}
-									onChange={handleToggleAll}
-									className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer"
-								/>
-								<span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">
-									{allChecked ? "Uncheck all" : "Check all"}
-								</span>
-							</label>
-						</div>
+						{/* Expense Tabs */}
+						<ExpenseTabs
+							totals={data.totals}
+							counts={data.counts}
+							activeTab={activeTab}
+							onTabChange={setActiveTab}
+						/>
 
 						{/* Expenses List */}
-						<div className="space-y-3">
-							{data.expenses.map((expense) => (
-								<div
-									key={expense._id}
-									className={`p-4 rounded-lg transition-all ${
-										expense.checked
-											? "bg-cyan-500/10 border border-cyan-500/30"
-											: "bg-slate-700/30 border border-slate-600/30 hover:bg-slate-700/50"
-									}`}
-								>
-									{/* First row: checkbox, name, amount, split toggle */}
-									<div className="flex items-center gap-4 mb-2">
-										<input
-											id={`expense.${expense.expenseId}`}
-											type="checkbox"
-											checked={expense.checked}
-											onChange={() => handleToggle(expense.expenseId)}
-											className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 cursor-pointer flex-shrink-0"
-										/>
-										<label
-											htmlFor={`expense.${expense.expenseId}`}
-											className="flex-1 min-w-0"
-										>
-											<div className="text-white font-medium truncate">
-												{expense.name}
-											</div>
-											<div className="text-sm text-gray-400">
-												{formatDate(expense.date)}
-											</div>
-										</label>
-										<div className="text-lg font-semibold text-white flex-shrink-0">
-											{formatCurrency(expense.amount)}
-										</div>
-										<div className="flex items-center gap-2 flex-shrink-0">
-											{(expense.split ?? true) ? (
-												<Users className="w-4 h-4 text-cyan-400" />
-											) : (
-												<User className="w-4 h-4 text-purple-400" />
-											)}
-											<Switch
-												checked={expense.split ?? true}
-												onCheckedChange={() =>
-													handleToggleSplit(expense.expenseId)
-												}
-												className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
-												title={
-													(expense.split ?? true)
-														? "Split 50/50 - Toggle for 100%"
-														: "100% - Toggle for 50/50 split"
-												}
-											/>
-										</div>
-									</div>
+						{filteredExpenses.length === 0 ? (
+							<div className="text-center py-8 text-gray-400">
+								No {activeTab === "mine" ? "individual" : "shared"} expenses
+								this month
+							</div>
+						) : (
+							<div className="space-y-3">
+								{filteredExpenses.map((expense) => {
+									const isSplit = expense.split ?? true;
+									const yourShare = isSplit
+										? expense.amount / 2
+										: expense.amount;
+									const sharePercentage = isSplit ? 50 : 100;
 
-									{/* Second row: category selector */}
-									<div className="flex items-center gap-2 ml-9">
-										<Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
-										<CategorySelect
-											value={expense.category || "Other"}
-											onValueChange={(newCategory) =>
-												handleCategoryChange(
-													expense.expenseId,
-													expense.merchantName || expense.name,
-													newCategory,
-												)
-											}
-											disabled={updatingExpenseId === expense.expenseId}
-										/>
-										{updatingExpenseId === expense.expenseId && (
-											<span className="text-xs text-gray-400">Updating...</span>
-										)}
-									</div>
-								</div>
-							))}
-						</div>
+									return (
+										<div
+											key={expense._id}
+											className="p-4 rounded-lg transition-all bg-slate-700/30 border border-slate-600/30 hover:bg-slate-700/50"
+										>
+											{/* Main row: name, amount, your share badge, split toggle */}
+											<div className="flex items-center gap-4 mb-3">
+												<div className="flex-1 min-w-0">
+													<div className="text-white font-medium truncate">
+														{expense.name}
+													</div>
+													<div className="text-sm text-gray-400">
+														{formatDate(expense.date)}
+													</div>
+												</div>
+												<div className="flex-shrink-0 text-right">
+													<div className="text-lg font-semibold text-white">
+														{formatCurrency(expense.amount)}
+													</div>
+													<div
+														className={`text-xs font-medium ${isSplit ? "text-cyan-400" : "text-purple-400"}`}
+													>
+														Your share: {formatCurrency(yourShare)} (
+														{sharePercentage}%)
+													</div>
+												</div>
+												<div className="flex items-center gap-2 flex-shrink-0">
+													{isSplit ? (
+														<Users className="w-4 h-4 text-cyan-400" />
+													) : (
+														<User className="w-4 h-4 text-purple-400" />
+													)}
+													<Switch
+														checked={isSplit}
+														onCheckedChange={() =>
+															handleToggleSplit(expense.expenseId)
+														}
+														className="data-[state=checked]:bg-cyan-500 data-[state=unchecked]:bg-purple-500"
+														title={
+															isSplit
+																? "Split 50/50 - Toggle for 100%"
+																: "100% - Toggle for 50/50 split"
+														}
+													/>
+												</div>
+											</div>
+
+											{/* Category row */}
+											<div className="flex items-center gap-2">
+												<Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
+												<CategorySelect
+													value={expense.category || "Other"}
+													onValueChange={(newCategory) =>
+														handleCategoryChange(
+															expense.expenseId,
+															expense.merchantName || expense.name,
+															newCategory,
+														)
+													}
+													disabled={updatingExpenseId === expense.expenseId}
+												/>
+												{updatingExpenseId === expense.expenseId && (
+													<span className="text-xs text-gray-400">
+														Updating...
+													</span>
+												)}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						)}
 					</div>
 				)}
 			</div>
