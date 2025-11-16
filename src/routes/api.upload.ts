@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { parseCSV } from "@/lib/csv-parser";
-import { parsePDF } from "@/lib/pdf-parser";
+import { type ParseResult, parsePDF } from "@/lib/pdf-parser";
 
 export const Route = createFileRoute("/api/upload")({
 	server: {
@@ -42,7 +42,7 @@ export const Route = createFileRoute("/api/upload")({
 						}
 
 						try {
-							let parseResult;
+							let parseResult: ParseResult;
 
 							if (isPDF) {
 								// Convert file to buffer for PDF parsing

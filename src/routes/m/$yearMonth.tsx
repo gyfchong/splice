@@ -97,6 +97,7 @@ function MonthPage() {
 	}, [data, activeTab]);
 
 	// Clear selection when tab changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: We need activeTab to trigger this effect
 	useEffect(() => {
 		setSelectedExpenses(new Set());
 	}, [activeTab]);

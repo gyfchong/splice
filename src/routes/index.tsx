@@ -1,9 +1,8 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, ChevronRight, Clock, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
-import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
@@ -11,7 +10,6 @@ import { api } from "../../convex/_generated/api";
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-	const navigate = useNavigate();
 	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
 	const expensesFeed = useQuery(api.expenses.getExpensesFeed, {
@@ -104,14 +102,16 @@ function HomePage() {
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
 
-						// Add expenses with known categories only (no AI)
+						// Add expenses with cache/heuristics categorization and queue AI jobs
 						const addResult = await addExpensesWithKnownCategories({
 							expenses,
 							userId: "anonymous",
 						});
 						totalExpenses += addResult.addedCount;
-						totalCategorizedFromCache += addResult.categorizedFromCache || 0;
-						totalUncategorized += addResult.uncategorizedCount || 0;
+						totalCategorizedFromCache +=
+							(addResult.categorizedFromCache || 0) +
+							(addResult.categorizedFromHeuristics || 0);
+						totalUncategorized += addResult.queuedForAI || 0;
 					} else {
 						totalErrors++;
 					}
@@ -129,7 +129,7 @@ function HomePage() {
 				} else {
 					const categorizedInfo =
 						totalCategorizedFromCache > 0 || totalUncategorized > 0
-							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} need categorization)`
+							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} queued for AI)`
 							: "";
 
 					setUploadStatus({
@@ -144,6 +144,7 @@ function HomePage() {
 						status: "completed",
 					}));
 
+					// Check for queued expenses and show toast notification
 					// Scroll to feed after successful upload
 					setTimeout(() => {
 						feedTopRef.current?.scrollIntoView({
@@ -156,17 +157,9 @@ function HomePage() {
 					if (totalUncategorized > 0) {
 						setTimeout(() => {
 							toast({
-								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} need${totalUncategorized === 1 ? "s" : ""} categorization`,
-								description: "Some merchants are not yet recognized.",
-								duration: 10000, // Show for 10 seconds
-								action: (
-									<ToastAction
-										altText="Categorize Now"
-										onClick={() => navigate({ to: "/admin" })}
-									>
-										Categorize Now
-									</ToastAction>
-								),
+								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} queued for AI categorization`,
+								description: "Background worker will categorize them shortly.",
+								duration: 8000, // Show for 8 seconds
 							});
 						}, 2000);
 					}
@@ -184,7 +177,7 @@ function HomePage() {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithKnownCategories, recordUpload, toast, navigate],
+		[addExpensesWithKnownCategories, recordUpload, toast],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
