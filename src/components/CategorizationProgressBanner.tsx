@@ -16,7 +16,9 @@ export function CategorizationProgressBanner() {
 	if (
 		isDismissed ||
 		!jobStats ||
-		(jobStats.pending === 0 && jobStats.processing === 0 && jobStats.failed === 0)
+		(jobStats.pending === 0 &&
+			jobStats.processing === 0 &&
+			jobStats.failed === 0)
 	) {
 		return null;
 	}
@@ -51,13 +53,15 @@ export function CategorizationProgressBanner() {
 								</span>
 								<span className="text-white/80 text-sm">
 									{jobStats.pending} pending
-									{jobStats.processing > 0 && `, ${jobStats.processing} in progress`}
+									{jobStats.processing > 0 &&
+										`, ${jobStats.processing} in progress`}
 									{jobStats.failed > 0 && `, ${jobStats.failed} failed`}
 								</span>
 							</div>
 							<p className="text-white/70 text-xs mt-0.5">
 								Background worker is processing {totalJobs} job
-								{totalJobs === 1 ? "" : "s"}. Estimated time: {estimatedTimeText}
+								{totalJobs === 1 ? "" : "s"}. Estimated time:{" "}
+								{estimatedTimeText}
 							</p>
 						</div>
 					</div>

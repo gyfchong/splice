@@ -1,9 +1,8 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
-import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
@@ -11,7 +10,6 @@ import { api } from "../../convex/_generated/api";
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-	const navigate = useNavigate();
 	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
 	const addExpensesWithKnownCategories = useAction(
@@ -106,7 +104,9 @@ function HomePage() {
 							userId: "anonymous",
 						});
 						totalExpenses += addResult.addedCount;
-						totalCategorizedFromCache += (addResult.categorizedFromCache || 0) + (addResult.categorizedFromHeuristics || 0);
+						totalCategorizedFromCache +=
+							(addResult.categorizedFromCache || 0) +
+							(addResult.categorizedFromHeuristics || 0);
 						totalUncategorized += addResult.queuedForAI || 0;
 					} else {
 						totalErrors++;
@@ -164,7 +164,7 @@ function HomePage() {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithKnownCategories, recordUpload, toast, navigate],
+		[addExpensesWithKnownCategories, recordUpload, toast],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {

@@ -278,7 +278,7 @@ export const addExpenses = mutation({
 					checked: expense.checked ?? false, // Use provided value or default to false
 					split: expense.split ?? false, // Use provided value or default to individual (100%)
 					uploadTimestamp: Date.now(),
-					category: expense.category ?? null, // Default to null (uncategorized) instead of undefined
+					category: expense.category ?? undefined, // Default to undefined (uncategorized)
 					merchantName: expense.merchantName,
 				})
 				newExpenseIds.push(expense.expenseId)
@@ -668,7 +668,7 @@ export const addExpensesWithCategories = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: null, // Default to null (uncategorized)
+			category: undefined, // Default to undefined (uncategorized)
 			split: expense.split ?? false, // Default to individual (100%) if not specified
 		}))
 
@@ -899,7 +899,7 @@ export const addExpensesWithBackgroundCategorization = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: null, // Default to null (uncategorized)
+			category: undefined, // Default to undefined (uncategorized)
 			split: expense.split ?? false, // Will be overridden by prediction if available
 		}))
 
@@ -1164,7 +1164,7 @@ export const addExpensesWithKnownCategories = action({
 		const expensesWithMerchants = args.expenses.map((expense) => ({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
-			category: null, // Default to null (uncategorized)
+			category: undefined, // Default to undefined (uncategorized)
 			split: expense.split ?? true,
 		}))
 

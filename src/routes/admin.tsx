@@ -5,23 +5,74 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { api } from "../../convex/_generated/api";
 
+// Type definitions for Convex query returns
+interface AdminDashboardStats {
+	expenses: {
+		uncategorized: number;
+		total: number;
+		percentage: number;
+	};
+	jobQueue: {
+		pending: number;
+		processing: number;
+		failed: number;
+	};
+	rateLimit: {
+		available: number;
+		limit: number;
+		resetTime: number;
+	};
+	recentActivity: Array<{
+		merchantName: string;
+		category: string;
+		date: string;
+	}>;
+	needsAttention: boolean;
+}
+
+interface UncategorizedExpense {
+	_id: string;
+	expenseId: string;
+	name: string;
+	amount: number;
+	date: string;
+}
+
+interface UncategorizedExpensesByMerchant {
+	totalUncategorized: number;
+	uniqueMerchants: number;
+	groups: Array<{
+		merchantName: string;
+		expenseCount: number;
+		totalAmount: number;
+		expenses: UncategorizedExpense[];
+	}>;
+}
+
 export const Route = createFileRoute("/admin")({
 	component: AdminPage,
 });
 
 function AdminPage() {
 	const stats = useQuery(api.categorization.getAdminDashboardStats);
-	const uncategorizedExpenses = useQuery(api.categorization.getUncategorizedExpensesByMerchant);
+	const uncategorizedExpenses = useQuery(
+		api.categorization.getUncategorizedExpensesByMerchant,
+	);
 
 	// Show "nothing to do" message if all categorized
 	if (stats && !stats.needsAttention) {
 		return <AllCaughtUp stats={stats} />;
 	}
 
-	return <AdminDashboard stats={stats} uncategorizedExpenses={uncategorizedExpenses} />;
+	return (
+		<AdminDashboard
+			stats={stats}
+			uncategorizedExpenses={uncategorizedExpenses}
+		/>
+	);
 }
 
-function AllCaughtUp({ stats }: { stats: any }) {
+function AllCaughtUp({ stats }: { stats: AdminDashboardStats }) {
 	return (
 		<div className="container mx-auto p-8">
 			<div className="max-w-2xl mx-auto">
@@ -45,7 +96,13 @@ function AllCaughtUp({ stats }: { stats: any }) {
 	);
 }
 
-function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncategorizedExpenses: any }) {
+function AdminDashboard({
+	stats,
+	uncategorizedExpenses,
+}: {
+	stats: AdminDashboardStats | undefined;
+	uncategorizedExpenses: UncategorizedExpensesByMerchant | undefined;
+}) {
 	const deleteAllExpenses = useMutation(api.expenses.deleteAllExpenses);
 	const { toast } = useToast();
 	const [isDeleting, setIsDeleting] = useState(false);
@@ -65,10 +122,10 @@ function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncatego
 				title: "Expenses deleted!",
 				description: `${result.deletedCount} expenses have been permanently deleted.`,
 			});
-		} catch (error: any) {
+		} catch (error) {
 			toast({
 				title: "Deletion failed",
-				description: error.message,
+				description: error instanceof Error ? error.message : "Unknown error",
 			});
 		} finally {
 			setIsDeleting(false);
@@ -135,21 +192,32 @@ function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncatego
 						<ul className="space-y-2 text-sm text-blue-700">
 							<li className="flex items-start gap-2">
 								<span className="text-blue-500 mt-0.5">•</span>
-								<span><strong>Cache & Heuristics</strong> - Instant categorization during upload (~70% success rate)</span>
+								<span>
+									<strong>Cache & Heuristics</strong> - Instant categorization
+									during upload (~70% success rate)
+								</span>
 							</li>
 							<li className="flex items-start gap-2">
 								<span className="text-blue-500 mt-0.5">•</span>
-								<span><strong>Background Worker</strong> - Processes 1 job every 5 seconds (respects rate limits)</span>
+								<span>
+									<strong>Background Worker</strong> - Processes 1 job every 5
+									seconds (respects rate limits)
+								</span>
 							</li>
 							<li className="flex items-start gap-2">
 								<span className="text-blue-500 mt-0.5">•</span>
-								<span><strong>Daily Catchup</strong> - Runs at 2 AM to categorize any remaining uncategorized expenses</span>
+								<span>
+									<strong>Daily Catchup</strong> - Runs at 2 AM to categorize
+									any remaining uncategorized expenses
+								</span>
 							</li>
 						</ul>
 						{stats.expenses.uncategorized > 0 && (
 							<div className="mt-4 p-3 bg-white/60 rounded border border-blue-300">
 								<p className="text-sm text-blue-900">
-									<strong>{stats.expenses.uncategorized}</strong> expense{stats.expenses.uncategorized === 1 ? "" : "s"} currently queued for background processing.
+									<strong>{stats.expenses.uncategorized}</strong> expense
+									{stats.expenses.uncategorized === 1 ? "" : "s"} currently
+									queued for background processing.
 								</p>
 							</div>
 						)}
@@ -233,79 +301,92 @@ function AdminDashboard({ stats, uncategorizedExpenses }: { stats: any; uncatego
 			)}
 
 			{/* Uncategorized Expenses List */}
-			{uncategorizedExpenses && uncategorizedExpenses.totalUncategorized > 0 && (
-				<div className="bg-white border border-zinc-200 rounded-lg p-6 mb-8">
-					<h3 className="text-lg font-semibold mb-4">
-						Uncategorized Expenses ({uncategorizedExpenses.totalUncategorized} expenses from {uncategorizedExpenses.uniqueMerchants} merchants)
-					</h3>
-					<p className="text-sm text-zinc-500 mb-4">
-						These expenses will be automatically categorized by the background worker. You can also manually categorize them if needed.
-					</p>
-					<div className="space-y-2 max-h-[500px] overflow-y-auto">
-						{uncategorizedExpenses.groups.map((group: any) => (
-							<div
-								key={group.merchantName}
-								className="border border-zinc-200 rounded-lg overflow-hidden"
-							>
-								<button
-									type="button"
-									onClick={() => setExpandedMerchant(
-										expandedMerchant === group.merchantName ? null : group.merchantName
-									)}
-									className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
+			{uncategorizedExpenses &&
+				uncategorizedExpenses.totalUncategorized > 0 && (
+					<div className="bg-white border border-zinc-200 rounded-lg p-6 mb-8">
+						<h3 className="text-lg font-semibold mb-4">
+							Uncategorized Expenses ({uncategorizedExpenses.totalUncategorized}{" "}
+							expenses from {uncategorizedExpenses.uniqueMerchants} merchants)
+						</h3>
+						<p className="text-sm text-zinc-500 mb-4">
+							These expenses will be automatically categorized by the background
+							worker. You can also manually categorize them if needed.
+						</p>
+						<div className="space-y-2 max-h-[500px] overflow-y-auto">
+							{uncategorizedExpenses.groups.map((group) => (
+								<div
+									key={group.merchantName}
+									className="border border-zinc-200 rounded-lg overflow-hidden"
 								>
-									<div className="flex-1 text-left">
-										<div className="font-medium text-zinc-900">
-											{group.merchantName}
+									<button
+										type="button"
+										onClick={() =>
+											setExpandedMerchant(
+												expandedMerchant === group.merchantName
+													? null
+													: group.merchantName,
+											)
+										}
+										className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 transition-colors"
+									>
+										<div className="flex-1 text-left">
+											<div className="font-medium text-zinc-900">
+												{group.merchantName}
+											</div>
+											<div className="text-sm text-zinc-500">
+												{group.expenseCount} expense
+												{group.expenseCount === 1 ? "" : "s"} • $
+												{group.totalAmount.toFixed(2)} total
+											</div>
 										</div>
-										<div className="text-sm text-zinc-500">
-											{group.expenseCount} expense{group.expenseCount === 1 ? "" : "s"} • ${group.totalAmount.toFixed(2)} total
+										<div className="text-zinc-400">
+											{expandedMerchant === group.merchantName ? "▼" : "▶"}
 										</div>
-									</div>
-									<div className="text-zinc-400">
-										{expandedMerchant === group.merchantName ? "▼" : "▶"}
-									</div>
-								</button>
+									</button>
 
-								{expandedMerchant === group.merchantName && (
-									<div className="bg-zinc-50 p-4 border-t border-zinc-200">
-										<div className="space-y-2">
-											{group.expenses.slice(0, 10).map((expense: any) => (
-												<div
-													key={expense.expenseId}
-													className="flex items-center justify-between text-sm py-2 border-b border-zinc-200 last:border-0"
-												>
-													<div className="flex-1">
-														<div className="text-zinc-700">{expense.name}</div>
-														<div className="text-xs text-zinc-500">{expense.date}</div>
+									{expandedMerchant === group.merchantName && (
+										<div className="bg-zinc-50 p-4 border-t border-zinc-200">
+											<div className="space-y-2">
+												{group.expenses.slice(0, 10).map((expense) => (
+													<div
+														key={expense.expenseId}
+														className="flex items-center justify-between text-sm py-2 border-b border-zinc-200 last:border-0"
+													>
+														<div className="flex-1">
+															<div className="text-zinc-700">
+																{expense.name}
+															</div>
+															<div className="text-xs text-zinc-500">
+																{expense.date}
+															</div>
+														</div>
+														<div className="font-semibold text-zinc-900">
+															${expense.amount.toFixed(2)}
+														</div>
 													</div>
-													<div className="font-semibold text-zinc-900">
-														${expense.amount.toFixed(2)}
+												))}
+												{group.expenseCount > 10 && (
+													<div className="text-xs text-zinc-500 text-center pt-2">
+														... and {group.expenseCount - 10} more
 													</div>
-												</div>
-											))}
-											{group.expenseCount > 10 && (
-												<div className="text-xs text-zinc-500 text-center pt-2">
-													... and {group.expenseCount - 10} more
-												</div>
-											)}
+												)}
+											</div>
 										</div>
-									</div>
-								)}
-							</div>
-						))}
+									)}
+								</div>
+							))}
+						</div>
 					</div>
-				</div>
-			)}
+				)}
 
 			{/* Recent Activity */}
 			{stats.recentActivity && stats.recentActivity.length > 0 && (
 				<div className="bg-white border border-zinc-200 rounded-lg p-6">
 					<h3 className="text-lg font-semibold mb-4">Recent Categorizations</h3>
 					<div className="space-y-2">
-						{stats.recentActivity.map((activity: any, index: number) => (
+						{stats.recentActivity.map((activity) => (
 							<div
-								key={index}
+								key={`${activity.merchantName}-${activity.date}-${activity.category}`}
 								className="flex items-center justify-between py-2 border-b border-zinc-100 last:border-0"
 							>
 								<div className="flex-1">
