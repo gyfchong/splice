@@ -2,9 +2,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
-import { ToastAction } from "@/components/ui/toast";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
+import { ToastAction } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
 
@@ -37,7 +37,6 @@ function HomePage() {
 
 	const handleFiles = useCallback(
 		async (files: File[]) => {
-			const uploadStartTime = Date.now();
 			setIsUploading(true);
 			setUploadStatus(null);
 
@@ -236,7 +235,7 @@ function HomePage() {
 	);
 
 	return (
-		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
+		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
 			{/* Upload Progress Banner */}
 			{uploadProgress.status === "uploading" && (
 				<div className="fixed top-0 left-0 right-0 z-50 shadow-lg transition-all bg-blue-500/90 backdrop-blur-sm">

@@ -187,7 +187,7 @@ function MonthPage() {
 														{formatDate(expense.date)}
 													</div>
 												</div>
-												<div className="flex-shrink-0 text-right">
+												<div className="shrink-0 text-right">
 													<div className="text-lg font-semibold text-white">
 														{formatCurrency(expense.amount)}
 													</div>
@@ -198,7 +198,7 @@ function MonthPage() {
 														{sharePercentage}%)
 													</div>
 												</div>
-												<div className="flex items-center gap-2 flex-shrink-0">
+												<div className="flex items-center gap-2 shrink-0">
 													{isSplit ? (
 														<Users className="w-4 h-4 text-cyan-400" />
 													) : (
@@ -221,7 +221,7 @@ function MonthPage() {
 
 											{/* Category row */}
 											<div className="flex items-center gap-2">
-												<Tag className="w-4 h-4 text-gray-400 flex-shrink-0" />
+												<Tag className="w-4 h-4 text-gray-400 shrink-0" />
 												<CategorySelect
 													value={expense.category || "Other"}
 													onValueChange={(newCategory) =>

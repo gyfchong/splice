@@ -705,7 +705,7 @@ export const categorizeExistingExpenses = action({
  * Scan all existing expenses and populate global merchant mappings
  * This is useful for building the mapping table from historical data
  */
-export const populateMerchantMappingsFromExpenses = action({
+export const populateMerchantMappingsFromExpenses = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{
 		processedMerchants: number
@@ -951,10 +951,10 @@ export const getAdminDashboardStats = query({
 			: 100
 
 		// Get job queue stats
-		const jobStats = await ctx.runQuery(internal.jobQueue.getJobStats)
+		const jobStats = await ctx.runQuery((internal as any).jobQueue.getJobStats)
 
 		// Get rate limit status for OpenRouter
-		const rateLimit = await ctx.runQuery(internal.rateLimit.getRateLimitStatus, {
+		const rateLimit = await ctx.runQuery((internal as any).rateLimit.getRateLimitStatus, {
 			provider: "openrouter",
 		})
 
@@ -1021,20 +1021,38 @@ export const getUncategorizedFromUpload = query({
  */
 export const runFullCategorizationWorkflow = action({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<{
+		success: boolean
+		phase1: {
+			totalExpenses: number
+			alreadyCategorized: number
+			newlyCategorized: number
+			errors: number
+		}
+		phase2: {
+			processedMerchants: number
+			created: number
+			updated: number
+			skipped: number
+		}
+		summary: {
+			totalCategorized: number
+			merchantsMapped: number
+		}
+	}> => {
 		console.log("[runFullCategorizationWorkflow] Starting unified admin workflow...")
 
 		// Phase 1: Categorize existing expenses
 		console.log("[runFullCategorizationWorkflow] Phase 1: Categorizing expenses...")
 		const categorizeResult = await ctx.runAction(
-			api.categorization.categorizeExistingExpenses,
+			(api as any).categorization.categorizeExistingExpenses,
 			{},
 		)
 
 		// Phase 2: Rebuild merchant mappings from all categorized expenses
 		console.log("[runFullCategorizationWorkflow] Phase 2: Rebuilding merchant mappings...")
 		const mappingResult = await ctx.runAction(
-			api.categorization.populateMerchantMappingsFromExpenses,
+			internal.categorization.populateMerchantMappingsFromExpenses,
 			{},
 		)
 
