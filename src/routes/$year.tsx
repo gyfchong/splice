@@ -76,15 +76,15 @@ function YearPage() {
 					<>
 						{/* Year Aggregates */}
 						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6 mb-8">
-							<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-								{/* Total Shared */}
+							<div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+								{/* Total Spending */}
 								<div className="text-center">
 									<div className="text-sm text-gray-400 mb-2">
-										Total Shared ({year})
+										Total Spending ({year})
 									</div>
 									<div className="flex items-center justify-center gap-2">
 										<div className="text-3xl font-bold text-cyan-400">
-											{formatCurrency(data.totalShared)}
+											{formatCurrency(data.totals.all)}
 										</div>
 										{data.changeComparedToPreviousYear && (
 											<div className="flex items-center gap-1">
@@ -101,6 +101,27 @@ function YearPage() {
 											</div>
 										)}
 									</div>
+									<div className="text-xs text-gray-400 mt-1">
+										Shared + Mine
+									</div>
+								</div>
+
+								{/* Shared Breakdown */}
+								<div className="text-center">
+									<div className="text-sm text-gray-400 mb-2">Shared (50%)</div>
+									<div className="text-2xl font-bold text-white">
+										{formatCurrency(data.totals.shared)}
+									</div>
+									<div className="text-xs text-gray-400 mt-1">Your half</div>
+								</div>
+
+								{/* Mine Breakdown */}
+								<div className="text-center">
+									<div className="text-sm text-gray-400 mb-2">Mine (100%)</div>
+									<div className="text-2xl font-bold text-white">
+										{formatCurrency(data.totals.mine)}
+									</div>
+									<div className="text-xs text-gray-400 mt-1">Individual</div>
 								</div>
 
 								{/* Monthly Average */}
@@ -108,31 +129,16 @@ function YearPage() {
 									<div className="text-sm text-gray-400 mb-2">
 										Monthly Average
 									</div>
-									<div className="text-3xl font-bold text-white">
+									<div className="text-2xl font-bold text-white">
 										{formatCurrency(data.averagePerMonth)}
 									</div>
-								</div>
-
-								{/* Year-over-Year */}
-								<div className="text-center">
-									<div className="text-sm text-gray-400 mb-2">
-										Compared to {yearNum - 1}
-									</div>
-									<div
-										className={`text-2xl font-semibold ${
-											data.changeComparedToPreviousYear?.color === "green"
-												? "text-green-400"
-												: data.changeComparedToPreviousYear?.color === "red"
-													? "text-red-400"
-													: "text-gray-400"
-										}`}
-									>
+									<div className="text-xs text-gray-400 mt-1">
 										{data.changeComparedToPreviousYear?.direction === "increase"
-											? "↑ Increase"
+											? "↑ More than last year"
 											: data.changeComparedToPreviousYear?.direction ===
 													"decrease"
-												? "↓ Decrease"
-												: "— No Data"}
+												? "↓ Less than last year"
+												: "First year"}
 									</div>
 								</div>
 							</div>
@@ -175,20 +181,36 @@ function YearPage() {
 											</h3>
 										</div>
 
-										{/* Amount Shared */}
-										<div className="mb-2">
+										{/* Total Spending */}
+										<div className="mb-3">
 											<div className="text-sm text-gray-400 mb-1">
-												Your Share
+												You Spent
 											</div>
 											<div className="text-2xl font-bold text-cyan-400">
-												{formatCurrency(month.amountShared)}
+												{formatCurrency(month.totals.all)}
+											</div>
+										</div>
+
+										{/* Breakdown */}
+										<div className="flex gap-3 text-sm mb-2">
+											<div>
+												<span className="text-gray-400">Shared:</span>{" "}
+												<span className="text-white font-medium">
+													{formatCurrency(month.totals.shared)}
+												</span>
+											</div>
+											<div>
+												<span className="text-gray-400">Mine:</span>{" "}
+												<span className="text-white font-medium">
+													{formatCurrency(month.totals.mine)}
+												</span>
 											</div>
 										</div>
 
 										{/* Number of Expenses */}
 										<div className="text-sm text-gray-400">
-											{month.numberOfExpenses}{" "}
-											{month.numberOfExpenses === 1 ? "expense" : "expenses"}
+											{month.counts.all} expenses ({month.counts.shared} shared,{" "}
+											{month.counts.mine} individual)
 										</div>
 									</Link>
 								);

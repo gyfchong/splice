@@ -19,7 +19,7 @@ export function MonthlyExpensesChart() {
 			<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
 				<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
 					<TrendingUp className="w-6 h-6" />
-					Monthly Shared Expenses
+					Your Monthly Spending
 				</h2>
 				<div className="h-64 flex items-center justify-center">
 					<p className="text-gray-400">Loading chart data...</p>
@@ -33,7 +33,7 @@ export function MonthlyExpensesChart() {
 			<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
 				<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
 					<TrendingUp className="w-6 h-6" />
-					Monthly Shared Expenses
+					Your Monthly Spending
 				</h2>
 				<div className="h-64 flex items-center justify-center">
 					<p className="text-gray-400">
@@ -48,7 +48,7 @@ export function MonthlyExpensesChart() {
 		<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
 			<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
 				<TrendingUp className="w-6 h-6" />
-				Monthly Shared Expenses
+				Your Monthly Spending
 			</h2>
 
 			<ResponsiveContainer width="100%" height={300}>
@@ -74,7 +74,10 @@ export function MonthlyExpensesChart() {
 							borderRadius: "8px",
 							color: "#fff",
 						}}
-						formatter={(value: number) => [`$${value.toFixed(2)}`, "Shared"]}
+						formatter={(value: number) => [
+							`$${value.toFixed(2)}`,
+							"Your Total",
+						]}
 						labelStyle={{ color: "#94a3b8" }}
 					/>
 					<Line
@@ -89,7 +92,7 @@ export function MonthlyExpensesChart() {
 			</ResponsiveContainer>
 
 			<div className="mt-4 text-sm text-gray-400 text-center">
-				Showing monthly totals for checked expenses (split 50/50)
+				Your personal spending (split expenses counted at 50%)
 			</div>
 		</div>
 	);
