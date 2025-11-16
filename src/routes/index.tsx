@@ -14,8 +14,8 @@ function HomePage() {
 	const navigate = useNavigate();
 	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
-	const addExpensesWithCategories = useAction(
-		api.expenses.addExpensesWithCategories,
+	const addExpensesWithKnownCategories = useAction(
+		api.expenses.addExpensesWithKnownCategories,
 	);
 	const recordUpload = useMutation(api.expenses.recordUpload);
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
@@ -25,30 +25,14 @@ function HomePage() {
 		type: "success" | "error";
 		message: string;
 	} | null>(null);
-	const [categorizationProgress, setCategorizationProgress] = useState<{
-		status: "idle" | "categorizing" | "completed" | "partial" | "failed";
+	const [uploadProgress, setUploadProgress] = useState<{
+		status: "idle" | "uploading" | "completed" | "failed";
 		currentFile: number;
 		totalFiles: number;
-		categorizedCount: number;
-		totalExpenses: number;
-		failedMerchants: string[];
-		totalMerchants: number;
-		categorizedFromCache: number;
-		categorizedFromAI: number;
-		retriedMerchants: number;
-		totalRetryAttempts: number;
 	}>({
 		status: "idle",
 		currentFile: 0,
 		totalFiles: 0,
-		categorizedCount: 0,
-		totalExpenses: 0,
-		failedMerchants: [],
-		totalMerchants: 0,
-		categorizedFromCache: 0,
-		categorizedFromAI: 0,
-		retriedMerchants: 0,
-		totalRetryAttempts: 0,
 	});
 
 	const handleFiles = useCallback(
@@ -57,19 +41,11 @@ function HomePage() {
 			setIsUploading(true);
 			setUploadStatus(null);
 
-			// Initialize categorization progress
-			setCategorizationProgress({
-				status: "categorizing",
+			// Initialize upload progress
+			setUploadProgress({
+				status: "uploading",
 				currentFile: 0,
 				totalFiles: files.length,
-				categorizedCount: 0,
-				totalExpenses: 0,
-				failedMerchants: [],
-				totalMerchants: 0,
-				categorizedFromCache: 0,
-				categorizedFromAI: 0,
-				retriedMerchants: 0,
-				totalRetryAttempts: 0,
 			});
 
 			try {
@@ -91,7 +67,7 @@ function HomePage() {
 						type: "error",
 						message: result.errorMessage || "Upload failed",
 					});
-					setCategorizationProgress((prev) => ({
+					setUploadProgress((prev) => ({
 						...prev,
 						status: "failed",
 					}));
@@ -101,21 +77,15 @@ function HomePage() {
 				// Process each file result
 				let totalExpenses = 0;
 				let totalErrors = 0;
-				let totalCategorized = 0;
-				let totalMerchants = 0;
-				let totalFromCache = 0;
-				let totalFromAI = 0;
-				let totalRetried = 0;
-				let totalRetryAttempts = 0;
-				const allFailedMerchants: string[] = [];
-				let earliestNewMonth: { year: number; month: string } | null = null;
+				let totalCategorizedFromCache = 0;
+				let totalUncategorized = 0;
 				let fileIndex = 0;
 
 				for (const fileResult of result.files) {
 					fileIndex++;
 
 					// Update progress for current file
-					setCategorizationProgress((prev) => ({
+					setUploadProgress((prev) => ({
 						...prev,
 						currentFile: fileIndex,
 					}));
@@ -131,53 +101,14 @@ function HomePage() {
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
 
-						// Add expenses to Convex with automatic categorization (Phase 2: with retry)
-						const addResult = await addExpensesWithCategories({ expenses });
+						// Add expenses with known categories only (no AI)
+						const addResult = await addExpensesWithKnownCategories({
+							expenses,
+							userId: "anonymous",
+						});
 						totalExpenses += addResult.addedCount;
-						totalCategorized += addResult.categorizedCount || 0;
-						totalMerchants += addResult.totalMerchants || 0;
-						totalFromCache += addResult.categorizedFromCache || 0;
-						totalFromAI += addResult.categorizedFromAI || 0;
-						totalRetried += addResult.retriedMerchants || 0;
-						totalRetryAttempts += addResult.totalRetryAttempts || 0;
-
-						// Track failed merchants
-						if (
-							addResult.failedMerchants &&
-							addResult.failedMerchants.length > 0
-						) {
-							allFailedMerchants.push(...addResult.failedMerchants);
-						}
-
-						// Update progress with categorization results (Phase 2: enhanced stats)
-						setCategorizationProgress((prev) => ({
-							...prev,
-							categorizedCount: totalCategorized,
-							totalExpenses: totalExpenses,
-							totalMerchants: totalMerchants,
-							failedMerchants: allFailedMerchants,
-							categorizedFromCache: totalFromCache,
-							categorizedFromAI: totalFromAI,
-							retriedMerchants: totalRetried,
-							totalRetryAttempts: totalRetryAttempts,
-						}));
-
-						// Track earliest new month
-						if (addResult.addedCount > 0) {
-							for (const expense of expenses) {
-								if (
-									!earliestNewMonth ||
-									expense.year < earliestNewMonth.year ||
-									(expense.year === earliestNewMonth.year &&
-										expense.month < earliestNewMonth.month)
-								) {
-									earliestNewMonth = {
-										year: expense.year,
-										month: expense.month,
-									};
-								}
-							}
-						}
+						totalCategorizedFromCache += addResult.categorizedFromCache || 0;
+						totalUncategorized += addResult.uncategorizedCount || 0;
 					} else {
 						totalErrors++;
 					}
@@ -188,66 +119,53 @@ function HomePage() {
 						type: "error",
 						message: `Failed to parse ${totalErrors} file(s)`,
 					});
-					setCategorizationProgress((prev) => ({
+					setUploadProgress((prev) => ({
 						...prev,
 						status: "failed",
 					}));
 				} else {
+					const categorizedInfo =
+						totalCategorizedFromCache > 0 || totalUncategorized > 0
+							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} need categorization)`
+							: "";
+
 					setUploadStatus({
 						type: "success",
-						message: `Successfully added ${totalExpenses} expense(s)${
-							totalErrors > 0 ? ` (${totalErrors} file(s) had errors)` : ""
+						message: `Successfully added ${totalExpenses} expense(s)${categorizedInfo}${
+							totalErrors > 0 ? ` • ${totalErrors} file(s) had errors` : ""
 						}`,
 					});
 
-					// Determine final categorization status
-					const categorizationStatus =
-						totalCategorized === totalExpenses &&
-						allFailedMerchants.length === 0
-							? "completed"
-							: allFailedMerchants.length > 0
-								? "partial"
-								: "completed";
-
-					setCategorizationProgress((prev) => ({
+					setUploadProgress((prev) => ({
 						...prev,
-						status: categorizationStatus,
+						status: "completed",
 					}));
 
 					// Check for uncategorized expenses and show toast notification
-					// Wait a moment for background jobs to process
-					setTimeout(async () => {
-						try {
-							// Use ConvexReactClient to query (we need to import it)
-							// For now, we'll use a simpler approach: check if there were failed merchants
-							const uncategorizedCount = allFailedMerchants.length;
-
-							if (uncategorizedCount > 0) {
-								toast({
-									title: `${uncategorizedCount} expense${uncategorizedCount === 1 ? "" : "s"} need${uncategorizedCount === 1 ? "s" : ""} categorization`,
-									description: "Some merchants are not yet recognized.",
-									duration: 10000, // Show for 10 seconds
-									action: (
-										<ToastAction
-											altText="Categorize Now"
-											onClick={() => navigate({ to: "/admin" })}
-										>
-											Categorize Now
-										</ToastAction>
-									),
-								});
-							}
-						} catch (error) {
-							console.error("Error checking for uncategorized expenses:", error);
-						}
-					}, 2000);
+					if (totalUncategorized > 0) {
+						setTimeout(() => {
+							toast({
+								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} need${totalUncategorized === 1 ? "s" : ""} categorization`,
+								description: "Some merchants are not yet recognized.",
+								duration: 10000, // Show for 10 seconds
+								action: (
+									<ToastAction
+										altText="Categorize Now"
+										onClick={() => navigate({ to: "/admin" })}
+									>
+										Categorize Now
+									</ToastAction>
+								),
+							});
+						}, 2000);
+					}
 				}
 			} catch (error) {
 				setUploadStatus({
 					type: "error",
 					message: error instanceof Error ? error.message : "Upload failed",
 				});
-				setCategorizationProgress((prev) => ({
+				setUploadProgress((prev) => ({
 					...prev,
 					status: "failed",
 				}));
@@ -255,7 +173,7 @@ function HomePage() {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithCategories, recordUpload],
+		[addExpensesWithKnownCategories, recordUpload, toast, navigate],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -319,183 +237,28 @@ function HomePage() {
 
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
-			{/* Categorization Progress Banner */}
-			{categorizationProgress.status !== "idle" && (
-				<div
-					className={`fixed top-0 left-0 right-0 z-50 shadow-lg transition-all ${
-						categorizationProgress.status === "categorizing"
-							? "bg-blue-500/90 backdrop-blur-sm"
-							: categorizationProgress.status === "completed"
-								? "bg-green-500/90 backdrop-blur-sm"
-								: categorizationProgress.status === "partial"
-									? "bg-yellow-500/90 backdrop-blur-sm"
-									: "bg-red-500/90 backdrop-blur-sm"
-					}`}
-				>
+			{/* Upload Progress Banner */}
+			{uploadProgress.status === "uploading" && (
+				<div className="fixed top-0 left-0 right-0 z-50 shadow-lg transition-all bg-blue-500/90 backdrop-blur-sm">
 					<div className="max-w-4xl mx-auto px-6 py-4">
-						<div className="flex items-center justify-between gap-4">
-							<div className="flex-1">
-								{categorizationProgress.status === "categorizing" && (
-									<div className="space-y-1">
-										<div className="flex items-center gap-2">
-											<RefreshCw className="w-5 h-5 animate-spin text-white" />
-											<span className="text-white font-semibold">
-												Categorizing expenses...
-											</span>
-										</div>
-										<p className="text-sm text-white/90">
-											Processing file {categorizationProgress.currentFile} of{" "}
-											{categorizationProgress.totalFiles} •{" "}
-											{categorizationProgress.categorizedCount}/
-											{categorizationProgress.totalExpenses} expenses
-											categorized • {categorizationProgress.totalMerchants}{" "}
-											unique merchants
-										</p>
-									</div>
-								)}
-
-								{categorizationProgress.status === "completed" && (
-									<div className="space-y-1">
-										<div className="flex items-center gap-2">
-											<svg
-												className="w-5 h-5 text-white"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M5 13l4 4L19 7"
-												/>
-											</svg>
-											<span className="text-white font-semibold">
-												Categorization complete!
-											</span>
-										</div>
-										<p className="text-sm text-white/90">
-											Successfully categorized{" "}
-											{categorizationProgress.categorizedCount} expenses across{" "}
-											{categorizationProgress.totalMerchants} merchants
-											{categorizationProgress.categorizedFromCache > 0 && (
-												<span className="block text-xs text-white/70 mt-1">
-													{categorizationProgress.categorizedFromCache} from cache •{" "}
-													{categorizationProgress.categorizedFromAI} from AI
-													{categorizationProgress.retriedMerchants > 0 && (
-														<> • {categorizationProgress.retriedMerchants} retried ({categorizationProgress.totalRetryAttempts} retry attempts)</>
-													)}
-												</span>
-											)}
-										</p>
-									</div>
-								)}
-
-								{categorizationProgress.status === "partial" && (
-									<div className="space-y-1">
-										<div className="flex items-center gap-2">
-											<svg
-												className="w-5 h-5 text-white"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-												/>
-											</svg>
-											<span className="text-white font-semibold">
-												Categorization partially complete
-											</span>
-										</div>
-										<p className="text-sm text-white/90">
-											Categorized {categorizationProgress.categorizedCount}/
-											{categorizationProgress.totalExpenses} expenses •{" "}
-											{categorizationProgress.failedMerchants.length} merchants
-											failed (
-											{categorizationProgress.failedMerchants.join(", ")})
-										</p>
-										<p className="text-xs text-white/80">
-											Failed merchants were likely rate-limited and can be
-											categorized manually or by running the admin tool later.
-										</p>
-									</div>
-								)}
-
-								{categorizationProgress.status === "failed" && (
-									<div className="space-y-1">
-										<div className="flex items-center gap-2">
-											<svg
-												className="w-5 h-5 text-white"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													strokeWidth={2}
-													d="M6 18L18 6M6 6l12 12"
-												/>
-											</svg>
-											<span className="text-white font-semibold">
-												Categorization failed
-											</span>
-										</div>
-										<p className="text-sm text-white/90">
-											Unable to categorize expenses. Check upload status below.
-										</p>
-									</div>
-								)}
+						<div className="flex items-center gap-3">
+							<Upload className="w-5 h-5 animate-pulse text-white" />
+							<div>
+								<span className="text-white font-semibold">
+									Uploading files...
+								</span>
+								<p className="text-sm text-white/90">
+									Processing file {uploadProgress.currentFile} of{" "}
+									{uploadProgress.totalFiles}
+								</p>
 							</div>
-
-							{/* Dismiss button (only show when not actively categorizing) */}
-							{categorizationProgress.status !== "categorizing" && (
-								<button
-									type="button"
-									onClick={() =>
-										setCategorizationProgress({
-											status: "idle",
-											currentFile: 0,
-											totalFiles: 0,
-											categorizedCount: 0,
-											totalExpenses: 0,
-											failedMerchants: [],
-											totalMerchants: 0,
-											categorizedFromCache: 0,
-											categorizedFromAI: 0,
-											retriedMerchants: 0,
-											totalRetryAttempts: 0,
-										})
-									}
-									className="text-white hover:text-white/80 transition-colors"
-									aria-label="Dismiss banner"
-								>
-									<svg
-										className="w-5 h-5"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											strokeWidth={2}
-											d="M6 18L18 6M6 6l12 12"
-										/>
-									</svg>
-								</button>
-							)}
 						</div>
 					</div>
 				</div>
 			)}
 
 			<div
-				className={`max-w-4xl mx-auto ${categorizationProgress.status !== "idle" ? "mt-24" : ""}`}
+				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""}`}
 			>
 				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
 					Expense Splitter
@@ -597,37 +360,50 @@ function HomePage() {
 				</div>
 
 				{/* Phase 3: Job Queue Status */}
-				{jobQueueStats && (jobQueueStats.pending > 0 || jobQueueStats.processing > 0 || jobQueueStats.failed > 0) && (
-					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mb-8">
-						<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-							<RefreshCw className={`w-6 h-6 ${jobQueueStats.processing > 0 ? "animate-spin text-cyan-400" : "text-gray-400"}`} />
-							Background Categorization Queue
-						</h2>
-						<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-							<div className="bg-slate-700/50 rounded-lg p-4">
-								<div className="text-gray-400 text-sm mb-1">Pending</div>
-								<div className="text-2xl font-bold text-yellow-400">{jobQueueStats.pending}</div>
+				{jobQueueStats &&
+					(jobQueueStats.pending > 0 ||
+						jobQueueStats.processing > 0 ||
+						jobQueueStats.failed > 0) && (
+						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mb-8">
+							<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+								<RefreshCw
+									className={`w-6 h-6 ${jobQueueStats.processing > 0 ? "animate-spin text-cyan-400" : "text-gray-400"}`}
+								/>
+								Background Categorization Queue
+							</h2>
+							<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+								<div className="bg-slate-700/50 rounded-lg p-4">
+									<div className="text-gray-400 text-sm mb-1">Pending</div>
+									<div className="text-2xl font-bold text-yellow-400">
+										{jobQueueStats.pending}
+									</div>
+								</div>
+								<div className="bg-slate-700/50 rounded-lg p-4">
+									<div className="text-gray-400 text-sm mb-1">Processing</div>
+									<div className="text-2xl font-bold text-cyan-400">
+										{jobQueueStats.processing}
+									</div>
+								</div>
+								<div className="bg-slate-700/50 rounded-lg p-4">
+									<div className="text-gray-400 text-sm mb-1">Completed</div>
+									<div className="text-2xl font-bold text-green-400">
+										{jobQueueStats.completed}
+									</div>
+								</div>
+								<div className="bg-slate-700/50 rounded-lg p-4">
+									<div className="text-gray-400 text-sm mb-1">Failed</div>
+									<div className="text-2xl font-bold text-red-400">
+										{jobQueueStats.failed}
+									</div>
+								</div>
 							</div>
-							<div className="bg-slate-700/50 rounded-lg p-4">
-								<div className="text-gray-400 text-sm mb-1">Processing</div>
-								<div className="text-2xl font-bold text-cyan-400">{jobQueueStats.processing}</div>
-							</div>
-							<div className="bg-slate-700/50 rounded-lg p-4">
-								<div className="text-gray-400 text-sm mb-1">Completed</div>
-								<div className="text-2xl font-bold text-green-400">{jobQueueStats.completed}</div>
-							</div>
-							<div className="bg-slate-700/50 rounded-lg p-4">
-								<div className="text-gray-400 text-sm mb-1">Failed</div>
-								<div className="text-2xl font-bold text-red-400">{jobQueueStats.failed}</div>
-							</div>
+							{jobQueueStats.retryable > 0 && (
+								<div className="mt-4 text-sm text-gray-400">
+									{jobQueueStats.retryable} failed job(s) ready for retry
+								</div>
+							)}
 						</div>
-						{jobQueueStats.retryable > 0 && (
-							<div className="mt-4 text-sm text-gray-400">
-								{jobQueueStats.retryable} failed job(s) ready for retry
-							</div>
-						)}
-					</div>
-				)}
+					)}
 			</div>
 		</div>
 	);
