@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { DollarSign } from "lucide-react";
 import { useQuery } from "convex/react";
+import { DollarSign } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 
 export default function Header() {

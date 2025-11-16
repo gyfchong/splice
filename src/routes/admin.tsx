@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { api } from "../../convex/_generated/api";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin")({
 	component: AdminPage,
