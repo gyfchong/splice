@@ -285,7 +285,7 @@ function HomePage() {
 					aria-label="File upload area. Press Enter or Space to select files, or drag and drop files here."
 					aria-describedby="upload-instructions"
 					aria-busy={isUploading}
-					className={`border-2 border-dashed rounded-xl p-12 mb-12 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
+					className={`block w-full border-2 border-dashed rounded-xl p-12 mb-12 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 focus:ring-offset-slate-900 ${
 						isDragging
 							? "border-cyan-500 bg-cyan-500/10"
 							: "border-slate-600 bg-slate-800/50"
@@ -336,7 +336,7 @@ function HomePage() {
 					<output
 						aria-live="polite"
 						aria-atomic="true"
-						className={`mb-8 p-4 rounded-lg ${
+						className={`block w-full mb-8 p-4 rounded-lg ${
 							uploadStatus.type === "success"
 								? "bg-green-500/10 border border-green-500/50 text-green-400"
 								: "bg-red-500/10 border border-red-500/50 text-red-400"

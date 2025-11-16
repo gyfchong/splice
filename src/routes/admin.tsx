@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -48,8 +48,10 @@ function AdminDashboard({ stats }: { stats: any }) {
 	const runWorkflow = useAction(
 		api.categorization.runFullCategorizationWorkflow,
 	);
+	const deleteAllExpenses = useMutation(api.expenses.deleteAllExpenses);
 	const { toast } = useToast();
 	const [isProcessing, setIsProcessing] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
 
 	const handleRunWorkflow = async () => {
 		setIsProcessing(true);
@@ -66,6 +68,30 @@ function AdminDashboard({ stats }: { stats: any }) {
 			});
 		} finally {
 			setIsProcessing(false);
+		}
+	};
+
+	const handleDeleteAll = async () => {
+		const confirmed = window.confirm(
+			"Are you sure you want to delete ALL expenses? This action cannot be undone!",
+		);
+
+		if (!confirmed) return;
+
+		setIsDeleting(true);
+		try {
+			const result = await deleteAllExpenses();
+			toast({
+				title: "Expenses deleted!",
+				description: `${result.deletedCount} expenses have been permanently deleted.`,
+			});
+		} catch (error: any) {
+			toast({
+				title: "Deletion failed",
+				description: error.message,
+			});
+		} finally {
+			setIsDeleting(false);
 		}
 	};
 
@@ -159,6 +185,52 @@ function AdminDashboard({ stats }: { stats: any }) {
 						uncategorized expenses using AI (respecting rate limits), then
 						rebuild global merchant mappings from all categorized data to
 						improve future auto-categorization.
+					</p>
+				</div>
+			</div>
+
+			{/* Danger Zone - Delete All Expenses */}
+			<div className="bg-white border-2 border-red-200 rounded-lg p-8 mb-8">
+				<div className="flex items-start justify-between mb-6">
+					<div>
+						<h2 className="text-2xl font-bold mb-2 text-red-700">
+							Danger Zone
+						</h2>
+						<p className="text-zinc-600 max-w-2xl">
+							Permanently delete all expenses from the database. This action{" "}
+							<span className="font-semibold text-red-600">
+								cannot be undone
+							</span>
+							.
+						</p>
+					</div>
+				</div>
+
+				{/* Delete Button */}
+				<Button
+					onClick={handleDeleteAll}
+					disabled={isDeleting}
+					className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold px-8 py-6 text-lg"
+				>
+					{isDeleting ? (
+						<>
+							<span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+							Deleting...
+						</>
+					) : (
+						<>
+							<span className="mr-2">🗑️</span>
+							Delete All Expenses
+						</>
+					)}
+				</Button>
+
+				{/* Warning Note */}
+				<div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+					<p className="text-sm text-red-900">
+						<strong>⚠️ Warning:</strong> This will permanently delete all{" "}
+						{stats?.expenses.total || 0} expenses from the database. You will be
+						asked to confirm before deletion.
 					</p>
 				</div>
 			</div>

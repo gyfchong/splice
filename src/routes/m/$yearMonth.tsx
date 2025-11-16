@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ChevronLeft, Tag, User, Users } from "lucide-react";
+import { ChevronLeft, Tag, Trash2, User, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
@@ -20,6 +21,9 @@ function MonthPage() {
 		month,
 	});
 	const toggleSplit = useMutation(api.expenses.toggleSplit);
+	const bulkDeleteExpenses = useMutation(api.expenses.bulkDeleteExpenses);
+	const bulkSetSplit = useMutation(api.expenses.bulkSetSplit);
+	const bulkSetIndividual = useMutation(api.expenses.bulkSetIndividual);
 	const updateCategoryWithMapping = useAction(
 		api.categorization.updateExpenseCategoryWithMapping,
 	);
@@ -31,6 +35,12 @@ function MonthPage() {
 	const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(
 		null,
 	);
+
+	// Selection state
+	const [selectedExpenses, setSelectedExpenses] = useState<Set<string>>(
+		new Set(),
+	);
+	const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
 	// Mark this month as visited when component mounts
 	useEffect(() => {
@@ -85,6 +95,79 @@ function MonthPage() {
 				return data.expenses;
 		}
 	}, [data, activeTab]);
+
+	// Clear selection when tab changes
+	useEffect(() => {
+		setSelectedExpenses(new Set());
+	}, [activeTab]);
+
+	// Selection handlers
+	const handleSelectAll = () => {
+		if (selectedExpenses.size === filteredExpenses.length) {
+			setSelectedExpenses(new Set());
+		} else {
+			setSelectedExpenses(new Set(filteredExpenses.map((e) => e.expenseId)));
+		}
+	};
+
+	const handleSelectExpense = (expenseId: string) => {
+		const newSelected = new Set(selectedExpenses);
+		if (newSelected.has(expenseId)) {
+			newSelected.delete(expenseId);
+		} else {
+			newSelected.add(expenseId);
+		}
+		setSelectedExpenses(newSelected);
+	};
+
+	// Bulk action handlers
+	const handleBulkDelete = async () => {
+		if (selectedExpenses.size === 0) return;
+
+		const confirmed = window.confirm(
+			`Are you sure you want to delete ${selectedExpenses.size} expense${selectedExpenses.size > 1 ? "s" : ""}? This action cannot be undone.`,
+		);
+
+		if (!confirmed) return;
+
+		setIsProcessingBulk(true);
+		try {
+			await bulkDeleteExpenses({ expenseIds: Array.from(selectedExpenses) });
+			setSelectedExpenses(new Set());
+		} catch (error) {
+			console.error("Failed to delete expenses:", error);
+		} finally {
+			setIsProcessingBulk(false);
+		}
+	};
+
+	const handleBulkSetSplit = async () => {
+		if (selectedExpenses.size === 0) return;
+
+		setIsProcessingBulk(true);
+		try {
+			await bulkSetSplit({ expenseIds: Array.from(selectedExpenses) });
+			setSelectedExpenses(new Set());
+		} catch (error) {
+			console.error("Failed to set expenses as split:", error);
+		} finally {
+			setIsProcessingBulk(false);
+		}
+	};
+
+	const handleBulkSetIndividual = async () => {
+		if (selectedExpenses.size === 0) return;
+
+		setIsProcessingBulk(true);
+		try {
+			await bulkSetIndividual({ expenseIds: Array.from(selectedExpenses) });
+			setSelectedExpenses(new Set());
+		} catch (error) {
+			console.error("Failed to set expenses as individual:", error);
+		} finally {
+			setIsProcessingBulk(false);
+		}
+	};
 
 	const formatCurrency = (amount: number) => {
 		return new Intl.NumberFormat("en-US", {
@@ -157,6 +240,47 @@ function MonthPage() {
 							onTabChange={setActiveTab}
 						/>
 
+						{/* Bulk Actions Bar */}
+						{selectedExpenses.size > 0 && (
+							<div className="mb-4 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+								<div className="flex items-center justify-between">
+									<div className="text-cyan-400 font-medium">
+										{selectedExpenses.size} expense
+										{selectedExpenses.size > 1 ? "s" : ""} selected
+									</div>
+									<div className="flex gap-2">
+										<Button
+											onClick={handleBulkSetSplit}
+											disabled={isProcessingBulk}
+											className="bg-cyan-600 hover:bg-cyan-700 text-white"
+											size="sm"
+										>
+											<Users className="w-4 h-4 mr-2" />
+											Split All (50%)
+										</Button>
+										<Button
+											onClick={handleBulkSetIndividual}
+											disabled={isProcessingBulk}
+											className="bg-purple-600 hover:bg-purple-700 text-white"
+											size="sm"
+										>
+											<User className="w-4 h-4 mr-2" />
+											Individual All (100%)
+										</Button>
+										<Button
+											onClick={handleBulkDelete}
+											disabled={isProcessingBulk}
+											className="bg-red-600 hover:bg-red-700 text-white"
+											size="sm"
+										>
+											<Trash2 className="w-4 h-4 mr-2" />
+											Delete All
+										</Button>
+									</div>
+								</div>
+							</div>
+						)}
+
 						{/* Expenses List */}
 						{filteredExpenses.length === 0 ? (
 							<div className="text-center py-8 text-gray-400">
@@ -165,6 +289,23 @@ function MonthPage() {
 							</div>
 						) : (
 							<div className="space-y-3">
+								{/* Select All Header */}
+								<div className="flex items-center gap-3 px-4 py-2 bg-slate-700/20 rounded-lg border border-slate-600/30">
+									<input
+										type="checkbox"
+										checked={
+											filteredExpenses.length > 0 &&
+											selectedExpenses.size === filteredExpenses.length
+										}
+										onChange={handleSelectAll}
+										className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 bg-slate-700 cursor-pointer"
+									/>
+									<span className="text-sm text-gray-400 font-medium">
+										Select All ({filteredExpenses.length})
+									</span>
+								</div>
+
+								{/* Expense Items */}
 								{filteredExpenses.map((expense) => {
 									const isSplit = expense.split ?? false;
 									const yourShare = isSplit
@@ -175,10 +316,24 @@ function MonthPage() {
 									return (
 										<div
 											key={expense._id}
-											className="p-4 rounded-lg transition-all bg-slate-700/30 border border-slate-600/30 hover:bg-slate-700/50"
+											className={`p-4 rounded-lg transition-all border ${
+												selectedExpenses.has(expense.expenseId)
+													? "bg-cyan-500/10 border-cyan-500/50"
+													: "bg-slate-700/30 border-slate-600/30 hover:bg-slate-700/50"
+											}`}
 										>
-											{/* Main row: name, amount, your share badge, split toggle */}
+											{/* Main row: checkbox, name, amount, your share badge, split toggle */}
 											<div className="flex items-center gap-4 mb-3">
+												{/* Checkbox */}
+												<input
+													type="checkbox"
+													checked={selectedExpenses.has(expense.expenseId)}
+													onChange={() =>
+														handleSelectExpense(expense.expenseId)
+													}
+													className="w-5 h-5 rounded border-slate-500 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 bg-slate-700 cursor-pointer shrink-0"
+												/>
+
 												<div className="flex-1 min-w-0">
 													<div className="text-white font-medium truncate">
 														{expense.name}
@@ -219,8 +374,8 @@ function MonthPage() {
 												</div>
 											</div>
 
-											{/* Category row */}
-											<div className="flex items-center gap-2">
+											{/* Category row (indented to align with content) */}
+											<div className="flex items-center gap-2 ml-9">
 												<Tag className="w-4 h-4 text-gray-400 shrink-0" />
 												<CategorySelect
 													value={expense.category || "Other"}

@@ -1271,3 +1271,105 @@ export const addExpensesWithKnownCategories = action({
 		}
 	},
 })
+
+// Delete all expenses
+export const deleteAllExpenses = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const expenses = await ctx.db.query("expenses").collect()
+
+		for (const expense of expenses) {
+			await ctx.db.delete(expense._id)
+		}
+
+		return {
+			deletedCount: expenses.length,
+			result: "success" as const,
+		}
+	},
+})
+
+// Bulk delete specific expenses
+export const bulkDeleteExpenses = mutation({
+	args: {
+		expenseIds: v.array(v.string()),
+	},
+	handler: async (ctx, args) => {
+		let deletedCount = 0
+
+		for (const expenseId of args.expenseIds) {
+			const expense = await ctx.db
+				.query("expenses")
+				.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+				.first()
+
+			if (expense) {
+				await ctx.db.delete(expense._id)
+				deletedCount++
+			}
+		}
+
+		return {
+			deletedCount,
+			result: "success" as const,
+		}
+	},
+})
+
+// Bulk set expenses as split (50/50)
+export const bulkSetSplit = mutation({
+	args: {
+		expenseIds: v.array(v.string()),
+	},
+	handler: async (ctx, args) => {
+		let updatedCount = 0
+
+		for (const expenseId of args.expenseIds) {
+			const expense = await ctx.db
+				.query("expenses")
+				.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+				.first()
+
+			if (expense) {
+				await ctx.db.patch(expense._id, {
+					split: true,
+				})
+				updatedCount++
+			}
+		}
+
+		return {
+			updatedCount,
+			result: "success" as const,
+		}
+	},
+})
+
+// Bulk set expenses as individual (100%)
+export const bulkSetIndividual = mutation({
+	args: {
+		expenseIds: v.array(v.string()),
+	},
+	handler: async (ctx, args) => {
+		let updatedCount = 0
+
+		for (const expenseId of args.expenseIds) {
+			const expense = await ctx.db
+				.query("expenses")
+				.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+				.first()
+
+			if (expense) {
+				await ctx.db.patch(expense._id, {
+					split: false,
+				})
+				updatedCount++
+			}
+		}
+
+		return {
+			updatedCount,
+			result: "success" as const,
+		}
+	},
+})
