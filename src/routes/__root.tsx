@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import Header from "../components/Header";
+import Navigation from "../components/Navigation";
 import { Toaster } from "../components/ui/toaster";
 import ConvexProvider from "../integrations/convex/provider";
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
@@ -50,7 +51,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			<body>
 				<ConvexProvider>
 					<Header />
-					{children}
+					<div className="flex min-h-[calc(100vh-64px)]">
+						<Navigation />
+						<main className="flex-1">{children}</main>
+					</div>
 					<Toaster />
 					<TanStackDevtools
 						config={{

@@ -48,6 +48,9 @@ function YearPage() {
 		const visitedMonthsKey = `visitedMonths_${year}`;
 		const stored = JSON.parse(localStorage.getItem(visitedMonthsKey) || "[]");
 		setVisitedMonths(stored);
+
+		// Track this as the last visited page
+		localStorage.setItem("lastVisitedPage", `/${year}`);
 	}, [year]);
 
 	const data = useQuery(

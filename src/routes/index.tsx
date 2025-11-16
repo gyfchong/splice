@@ -1,7 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronRight, Clock, RefreshCw, Upload } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import {
+	Calendar,
+	ChevronRight,
+	Clock,
+	History,
+	RefreshCw,
+	Upload,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/components/ui/use-toast";
@@ -38,6 +45,21 @@ function HomePage() {
 		currentFile: 0,
 		totalFiles: 0,
 	});
+	const [lastVisitedPage, setLastVisitedPage] = useState<string | null>(null);
+
+	// Load last visited page from localStorage
+	useEffect(() => {
+		if (typeof window !== "undefined") {
+			const lastPage = localStorage.getItem("lastVisitedPage");
+			setLastVisitedPage(lastPage);
+
+			// Track home page as last visited when user explicitly navigates here
+			// (but don't track on initial page load if there's a previous page)
+			if (!lastPage) {
+				localStorage.setItem("lastVisitedPage", "/");
+			}
+		}
+	}, []);
 
 	const handleFiles = useCallback(
 		async (files: File[]) => {
@@ -143,14 +165,6 @@ function HomePage() {
 						...prev,
 						status: "completed",
 					}));
-
-					// Scroll to feed after successful upload
-					setTimeout(() => {
-						feedTopRef.current?.scrollIntoView({
-							behavior: "smooth",
-							block: "start",
-						});
-					}, 500);
 
 					// Check for uncategorized expenses and show toast notification
 					if (totalUncategorized > 0) {
@@ -289,11 +303,24 @@ function HomePage() {
 				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
 					Luman
 				</h1>
-				<p className="text-gray-400 text-center mb-12">
+				<p className="text-gray-400 text-center mb-6">
 					{hasExpenses
 						? "Your personal expense tracker"
 						: "Upload your expenses to get started"}
 				</p>
+
+				{/* Last Visited Page - Show if exists and not on home page initially */}
+				{lastVisitedPage && lastVisitedPage !== "/" && (
+					<div className="mb-6 flex justify-center">
+						<Link
+							to={lastVisitedPage}
+							className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-400 rounded-lg transition-colors font-medium"
+						>
+							<History className="w-4 h-4" />
+							Return to last visited page
+						</Link>
+					</div>
+				)}
 
 				{/* Upload Area - Compact when expenses exist, prominent when empty */}
 				<div className={`${hasExpenses ? "mb-8" : "mb-12"}`}>

@@ -52,7 +52,10 @@ function MonthPage() {
 			visitedMonths.push(month);
 			localStorage.setItem(visitedMonthsKey, JSON.stringify(visitedMonths));
 		}
-	}, [year, month]);
+
+		// Track this as the last visited page
+		localStorage.setItem("lastVisitedPage", `/m/${yearMonth}`);
+	}, [year, month, yearMonth]);
 
 	const handleToggleSplit = async (expenseId: string) => {
 		try {
@@ -97,6 +100,7 @@ function MonthPage() {
 	}, [data, activeTab]);
 
 	// Clear selection when tab changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activeTab is intentionally the trigger
 	useEffect(() => {
 		setSelectedExpenses(new Set());
 	}, [activeTab]);
