@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
+import { CategorySelect } from "@/components/CategorySelect";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { CategorySelect } from "@/components/CategorySelect";
 import { api } from "../../convex/_generated/api";
 
 // Type definitions for Convex query returns
@@ -105,13 +105,20 @@ function AdminDashboard({
 	uncategorizedExpenses: UncategorizedExpensesByMerchant | undefined;
 }) {
 	const deleteAllExpenses = useMutation(api.expenses.deleteAllExpenses);
-	const manuallyCategorize = useAction(api.categorization.manuallyCategorizeExpenses);
+	const manuallyCategorize = useAction(
+		api.categorization.manuallyCategorizeExpenses,
+	);
 	const { toast } = useToast();
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [expandedMerchant, setExpandedMerchant] = useState<string | null>(null);
-	const [categorizingMerchant, setCategorizingMerchant] = useState<string | null>(null);
+	const [categorizingMerchant, setCategorizingMerchant] = useState<
+		string | null
+	>(null);
 
-	const handleCategoryChange = async (merchantName: string, category: string) => {
+	const handleCategoryChange = async (
+		merchantName: string,
+		category: string,
+	) => {
 		setCategorizingMerchant(merchantName);
 		try {
 			const result = await manuallyCategorize({
@@ -360,7 +367,9 @@ function AdminDashboard({
 										<div className="flex items-center gap-3">
 											<CategorySelect
 												value=""
-												onValueChange={(category) => handleCategoryChange(group.merchantName, category)}
+												onValueChange={(category) =>
+													handleCategoryChange(group.merchantName, category)
+												}
 												disabled={categorizingMerchant === group.merchantName}
 												className="w-48 h-9 bg-white border-zinc-300 text-sm"
 											/>
