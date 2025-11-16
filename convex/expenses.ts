@@ -1488,3 +1488,112 @@ export const getRecentUploadBatches = query({
 		return formattedBatches
 	},
 })
+
+// Get all expenses grouped by month-year (for homepage expense feed)
+export const getExpensesFeed = query({
+	args: {
+		limit: v.optional(v.number()), // Number of months to return (default: 6)
+	},
+	handler: async (ctx, args) => {
+		const limit = args.limit ?? 6
+
+		// Get all expenses
+		const allExpenses = await ctx.db.query("expenses").collect()
+
+		// Group expenses by year-month
+		const monthGroups = new Map<
+			string,
+			{
+				year: number
+				month: string
+				monthName: string
+				expenses: typeof allExpenses
+			}
+		>()
+
+		const monthNames = [
+			"January",
+			"February",
+			"March",
+			"April",
+			"May",
+			"June",
+			"July",
+			"August",
+			"September",
+			"October",
+			"November",
+			"December",
+		]
+
+		for (const expense of allExpenses) {
+			const key = `${expense.year}-${expense.month}`
+
+			if (!monthGroups.has(key)) {
+				const monthIndex = Number.parseInt(expense.month, 10) - 1
+				monthGroups.set(key, {
+					year: expense.year,
+					month: expense.month,
+					monthName: monthNames[monthIndex],
+					expenses: [],
+				})
+			}
+
+			monthGroups.get(key)!.expenses.push(expense)
+		}
+
+		// Convert to array and sort by date (newest first)
+		const sortedMonths = Array.from(monthGroups.entries())
+			.sort(([keyA], [keyB]) => {
+				// Sort by year-month descending (newest first)
+				return keyB.localeCompare(keyA)
+			})
+			.slice(0, limit)
+
+		// Format each month group
+		const formattedMonths = sortedMonths.map(([key, group]) => {
+			// Sort expenses within month by date (newest first)
+			const sortedExpenses = group.expenses.sort((a, b) =>
+				b.date.localeCompare(a.date),
+			)
+
+			// Calculate totals for this month
+			let totalPersonal = 0
+			let totalShared = 0
+			let totalMine = 0
+
+			for (const expense of sortedExpenses) {
+				const isSplit = expense.split ?? false
+				if (isSplit) {
+					const share = expense.amount / 2
+					totalShared += share
+					totalPersonal += share
+				} else {
+					totalMine += expense.amount
+					totalPersonal += expense.amount
+				}
+			}
+
+			return {
+				yearMonth: key,
+				year: group.year,
+				month: group.month,
+				monthName: group.monthName,
+				expenseCount: sortedExpenses.length,
+				expenses: sortedExpenses,
+				totals: {
+					all: Math.round(totalPersonal * 100) / 100,
+					mine: Math.round(totalMine * 100) / 100,
+					shared: Math.round(totalShared * 100) / 100,
+				},
+				counts: {
+					all: sortedExpenses.length,
+					mine: sortedExpenses.filter((e) => !(e.split ?? false)).length,
+					shared: sortedExpenses.filter((e) => e.split ?? false).length,
+				},
+			}
+		})
+
+		return formattedMonths
+	},
+})
