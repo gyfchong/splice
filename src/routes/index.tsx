@@ -1,39 +1,27 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
+import { ToastAction } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
+	const navigate = useNavigate();
+	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
 	const addExpensesWithKnownCategories = useAction(
 		api.expenses.addExpensesWithKnownCategories,
 	);
 	const recordUpload = useMutation(api.expenses.recordUpload);
-	const populateMappings = useAction(
-		api.categorization.populateMerchantMappingsFromExpenses,
-	);
-	const categorizeExpenses = useAction(
-		api.categorization.categorizeExistingExpenses,
-	);
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
-	const [isScanning, setIsScanning] = useState(false);
-	const [isCategorizing, setIsCategorizing] = useState(false);
 	const [uploadStatus, setUploadStatus] = useState<{
-		type: "success" | "error";
-		message: string;
-	} | null>(null);
-	const [scanStatus, setScanStatus] = useState<{
-		type: "success" | "error";
-		message: string;
-	} | null>(null);
-	const [categorizeStatus, setCategorizeStatus] = useState<{
 		type: "success" | "error";
 		message: string;
 	} | null>(null);
@@ -151,6 +139,25 @@ function HomePage() {
 						...prev,
 						status: "completed",
 					}));
+
+					// Check for uncategorized expenses and show toast notification
+					if (totalUncategorized > 0) {
+						setTimeout(() => {
+							toast({
+								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} need${totalUncategorized === 1 ? "s" : ""} categorization`,
+								description: "Some merchants are not yet recognized.",
+								duration: 10000, // Show for 10 seconds
+								action: (
+									<ToastAction
+										altText="Categorize Now"
+										onClick={() => navigate({ to: "/admin" })}
+									>
+										Categorize Now
+									</ToastAction>
+								),
+							});
+						}, 2000);
+					}
 				}
 			} catch (error) {
 				setUploadStatus({
@@ -165,7 +172,7 @@ function HomePage() {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithKnownCategories, recordUpload],
+		[addExpensesWithKnownCategories, recordUpload, toast, navigate],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -234,64 +241,6 @@ function HomePage() {
 		},
 		[handleFiles],
 	);
-
-	const handleCategorizeExpenses = useCallback(async () => {
-		setIsCategorizing(true);
-		setCategorizeStatus(null);
-
-		try {
-			const result = await categorizeExpenses({ userId: "anonymous" });
-
-			// Check if we hit rate limiting
-			if (result.rateLimitResetTime) {
-				const resetDate = new Date(result.rateLimitResetTime);
-				const now = new Date();
-				const minutesUntilReset = Math.ceil(
-					(resetDate.getTime() - now.getTime()) / 60000,
-				);
-				const resetTimeStr = resetDate.toLocaleTimeString();
-
-				setCategorizeStatus({
-					type: "error",
-					message: `Rate limit reached. Categorized ${result.newlyCategorized} expenses before limit. You can resume at ${resetTimeStr} (in ${minutesUntilReset} minute${minutesUntilReset !== 1 ? "s" : ""}). Free tier limit: 16 requests/minute.`,
-				});
-			} else {
-				setCategorizeStatus({
-					type: "success",
-					message: `Categorization complete: ${result.totalExpenses} total expenses, ${result.alreadyCategorized} already categorized, ${result.newlyCategorized} newly categorized${result.errors > 0 ? `, ${result.errors} errors` : ""}`,
-				});
-			}
-		} catch (error) {
-			setCategorizeStatus({
-				type: "error",
-				message:
-					error instanceof Error ? error.message : "Categorization failed",
-			});
-		} finally {
-			setIsCategorizing(false);
-		}
-	}, [categorizeExpenses]);
-
-	const handleScanExpenses = useCallback(async () => {
-		setIsScanning(true);
-		setScanStatus(null);
-
-		try {
-			const result = await populateMappings();
-
-			setScanStatus({
-				type: "success",
-				message: `Scan complete: Processed ${result.processedMerchants} merchants, Created ${result.createdMappings} new mappings, Updated ${result.updatedMappings} existing mappings`,
-			});
-		} catch (error) {
-			setScanStatus({
-				type: "error",
-				message: error instanceof Error ? error.message : "Scan failed",
-			});
-		} finally {
-			setIsScanning(false);
-		}
-	}, [populateMappings]);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
@@ -480,98 +429,6 @@ function HomePage() {
 							)}
 						</div>
 					)}
-
-				{/* Admin Tools */}
-				<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8">
-					<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-						<RefreshCw className="w-6 h-6" />
-						Admin Tools
-					</h2>
-
-					<div className="space-y-6">
-						{/* Step 1: Categorize Expenses */}
-						<div>
-							<h3 className="text-lg font-semibold text-white mb-2">
-								Step 1: Categorize Existing Expenses
-							</h3>
-							<p className="text-gray-400 mb-4">
-								Add AI categories to expenses that don't have them yet. Run this
-								first if you have old expenses without categories.
-							</p>
-							<p className="text-sm text-yellow-400 mb-4">
-								⚠️ Rate Limit: 16 requests/minute (free tier). Automatically adds
-								4 second delays between requests to stay under limit.
-							</p>
-							<button
-								type="button"
-								onClick={handleCategorizeExpenses}
-								disabled={isCategorizing}
-								className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
-							>
-								<RefreshCw
-									className={`w-5 h-5 ${isCategorizing ? "animate-spin" : ""}`}
-								/>
-								{isCategorizing
-									? "Categorizing..."
-									: "Categorize Uncategorized Expenses"}
-							</button>
-						</div>
-
-						{categorizeStatus && (
-							<div
-								role="status"
-								aria-live="polite"
-								aria-atomic="true"
-								className={`p-4 rounded-lg ${
-									categorizeStatus.type === "success"
-										? "bg-green-500/10 border border-green-500/50 text-green-400"
-										: "bg-red-500/10 border border-red-500/50 text-red-400"
-								}`}
-							>
-								{categorizeStatus.message}
-							</div>
-						)}
-
-						{/* Step 2: Build Mappings */}
-						<div>
-							<h3 className="text-lg font-semibold text-white mb-2">
-								Step 2: Rebuild Merchant Mappings
-							</h3>
-							<p className="text-gray-400 mb-4">
-								Scan categorized expenses to build merchant category mappings.
-								This helps improve auto-categorization for future uploads.
-							</p>
-							<button
-								type="button"
-								onClick={handleScanExpenses}
-								disabled={isScanning}
-								className="px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
-							>
-								<RefreshCw
-									className={`w-5 h-5 ${isScanning ? "animate-spin" : ""}`}
-								/>
-								{isScanning
-									? "Scanning Expenses..."
-									: "Rebuild Merchant Mappings"}
-							</button>
-						</div>
-
-						{scanStatus && (
-							<div
-								role="status"
-								aria-live="polite"
-								aria-atomic="true"
-								className={`p-4 rounded-lg ${
-									scanStatus.type === "success"
-										? "bg-green-500/10 border border-green-500/50 text-green-400"
-										: "bg-red-500/10 border border-red-500/50 text-red-400"
-								}`}
-							>
-								{scanStatus.message}
-							</div>
-						)}
-					</div>
-				</div>
 			</div>
 		</div>
 	);
