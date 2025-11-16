@@ -1,4 +1,4 @@
-import { action, internalMutation, mutation, query } from "./_generated/server"
+import { action, internalAction, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { api, internal } from "./_generated/api"
 
@@ -157,7 +157,7 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
  * @param maxRetries - Maximum number of retry attempts (default: 3)
  * @returns Category name or "Other" as fallback
  */
-export const categorizeMerchantWithRetry = action({
+export const categorizeMerchantWithRetry = internalAction({
 	args: {
 		merchantName: v.string(),
 		description: v.string(),
@@ -507,7 +507,7 @@ export const getCategoryForMerchant = action({
 			if (enableRetry) {
 				// PHASE 2: Use retry logic with exponential backoff
 				console.log(`[getCategoryForMerchant] Using retry logic (max ${maxRetries} attempts)`)
-				const retryResult = await ctx.runAction(api.categorization.categorizeMerchantWithRetry, {
+				const retryResult = await ctx.runAction(internal.categorization.categorizeMerchantWithRetry, {
 					merchantName,
 					description,
 					maxRetries,
@@ -879,5 +879,57 @@ export const addCustomCategory = mutation({
 		})
 
 		return trimmedName
+	},
+})
+
+/**
+ * PHASE 3: Update expense category (for job queue worker)
+ * Updates an expense's category and optionally creates merchant mappings
+ */
+export const updateExpenseCategory = internalMutation({
+	args: {
+		expenseId: v.string(),
+		category: v.string(),
+		merchantName: v.optional(v.string()),
+		userId: v.optional(v.string()),
+	},
+	handler: async (ctx, { expenseId, category, merchantName, userId }) => {
+		// Find the expense
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error(`Expense not found: ${expenseId}`)
+		}
+
+		// Update expense with category
+		await ctx.db.patch(expense._id, {
+			category,
+			merchantName: merchantName || expense.merchantName,
+		})
+
+		// If merchantName provided, update global mapping
+		if (merchantName) {
+			const existingMapping = await ctx.db
+				.query("merchantMappings")
+				.withIndex("by_merchant", (q) => q.eq("merchantName", merchantName))
+				.first()
+
+			if (!existingMapping) {
+				// Create new global mapping
+				await ctx.db.insert("merchantMappings", {
+					merchantName,
+					category,
+					confidence: "ai",
+					voteCount: 0,
+					aiSuggestion: category,
+					lastUpdated: Date.now(),
+				})
+			}
+		}
+
+		return { success: true }
 	},
 })
