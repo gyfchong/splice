@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as YearRouteImport } from './routes/$year'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MYearMonthRouteImport } from './routes/m/$yearMonth'
 import { Route as ApiUploadRouteImport } from './routes/api.upload'
 
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const YearRoute = YearRouteImport.update({
   id: '/$year',
   path: '/$year',
@@ -38,12 +44,14 @@ const ApiUploadRoute = ApiUploadRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$year': typeof YearRoute
+  '/admin': typeof AdminRoute
   '/api/upload': typeof ApiUploadRoute
   '/m/$yearMonth': typeof MYearMonthRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$year': typeof YearRoute
+  '/admin': typeof AdminRoute
   '/api/upload': typeof ApiUploadRoute
   '/m/$yearMonth': typeof MYearMonthRoute
 }
@@ -51,26 +59,35 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$year': typeof YearRoute
+  '/admin': typeof AdminRoute
   '/api/upload': typeof ApiUploadRoute
   '/m/$yearMonth': typeof MYearMonthRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$year' | '/api/upload' | '/m/$yearMonth'
+  fullPaths: '/' | '/$year' | '/admin' | '/api/upload' | '/m/$yearMonth'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$year' | '/api/upload' | '/m/$yearMonth'
-  id: '__root__' | '/' | '/$year' | '/api/upload' | '/m/$yearMonth'
+  to: '/' | '/$year' | '/admin' | '/api/upload' | '/m/$yearMonth'
+  id: '__root__' | '/' | '/$year' | '/admin' | '/api/upload' | '/m/$yearMonth'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   YearRoute: typeof YearRoute
+  AdminRoute: typeof AdminRoute
   ApiUploadRoute: typeof ApiUploadRoute
   MYearMonthRoute: typeof MYearMonthRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$year': {
       id: '/$year'
       path: '/$year'
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   YearRoute: YearRoute,
+  AdminRoute: AdminRoute,
   ApiUploadRoute: ApiUploadRoute,
   MYearMonthRoute: MYearMonthRoute,
 }

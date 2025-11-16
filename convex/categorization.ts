@@ -705,7 +705,7 @@ export const categorizeExistingExpenses = action({
  * Scan all existing expenses and populate global merchant mappings
  * This is useful for building the mapping table from historical data
  */
-export const populateMerchantMappingsFromExpenses = action({
+export const populateMerchantMappingsFromExpenses = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{
 		processedMerchants: number
@@ -931,5 +931,151 @@ export const updateExpenseCategory = internalMutation({
 		}
 
 		return { success: true }
+	},
+})
+
+/**
+ * Get comprehensive admin dashboard statistics
+ * Used by the /admin route to show system status
+ */
+export const getAdminDashboardStats = query({
+	args: {},
+	handler: async (ctx) => {
+		// Count total and uncategorized expenses
+		const allExpenses = await ctx.db.query("expenses").collect()
+		const uncategorized = allExpenses.filter((e) => !e.category)
+		const totalCount = allExpenses.length
+		const uncategorizedCount = uncategorized.length
+		const percentage = totalCount > 0
+			? Math.round(((totalCount - uncategorizedCount) / totalCount) * 100)
+			: 100
+
+		// Get job queue stats
+		const jobStats = await ctx.runQuery((internal as any).jobQueue.getJobStats)
+
+		// Get rate limit status for OpenRouter
+		const rateLimit = await ctx.runQuery((internal as any).rateLimit.getRateLimitStatus, {
+			provider: "openrouter",
+		})
+
+		// Get recent categorization activity (last 10)
+		const recentExpenses = await ctx.db
+			.query("expenses")
+			.filter((q) => q.neq(q.field("category"), undefined))
+			.order("desc")
+			.take(10)
+
+		const recentActivity = recentExpenses.map((expense) => ({
+			merchantName: expense.merchantName || expense.name,
+			category: expense.category || "Unknown",
+			date: expense.date,
+		}))
+
+		return {
+			expenses: {
+				uncategorized: uncategorizedCount,
+				total: totalCount,
+				percentage,
+			},
+			jobQueue: jobStats,
+			rateLimit: {
+				available: rateLimit.requestsRemaining,
+				limit: rateLimit.requestsPerMinute,
+				resetTime: rateLimit.resetAt,
+			},
+			recentActivity,
+			needsAttention: uncategorizedCount > 0,
+		}
+	},
+})
+
+/**
+ * Check for uncategorized expenses from a specific upload session
+ * Used to trigger toast notification after file upload
+ */
+export const getUncategorizedFromUpload = query({
+	args: {
+		uploadTimestamp: v.number(),
+	},
+	handler: async (ctx, { uploadTimestamp }) => {
+		const uncategorized = await ctx.db
+			.query("expenses")
+			.filter((q) =>
+				q.and(
+					q.gte(q.field("uploadTimestamp"), uploadTimestamp),
+					q.eq(q.field("category"), undefined),
+				),
+			)
+			.collect()
+
+		return {
+			count: uncategorized.length,
+			hasUncategorized: uncategorized.length > 0,
+		}
+	},
+})
+
+/**
+ * Unified admin workflow that combines categorization + mapping rebuild
+ * Single button that does everything needed to optimize the system
+ */
+export const runFullCategorizationWorkflow = action({
+	args: {},
+	handler: async (ctx): Promise<{
+		success: boolean
+		phase1: {
+			totalExpenses: number
+			alreadyCategorized: number
+			newlyCategorized: number
+			errors: number
+		}
+		phase2: {
+			processedMerchants: number
+			created: number
+			updated: number
+			skipped: number
+		}
+		summary: {
+			totalCategorized: number
+			merchantsMapped: number
+		}
+	}> => {
+		console.log("[runFullCategorizationWorkflow] Starting unified admin workflow...")
+
+		// Phase 1: Categorize existing expenses
+		console.log("[runFullCategorizationWorkflow] Phase 1: Categorizing expenses...")
+		const categorizeResult = await ctx.runAction(
+			(api as any).categorization.categorizeExistingExpenses,
+			{},
+		)
+
+		// Phase 2: Rebuild merchant mappings from all categorized expenses
+		console.log("[runFullCategorizationWorkflow] Phase 2: Rebuilding merchant mappings...")
+		const mappingResult = await ctx.runAction(
+			internal.categorization.populateMerchantMappingsFromExpenses,
+			{},
+		)
+
+		console.log("[runFullCategorizationWorkflow] Workflow complete!")
+
+		return {
+			success: true,
+			phase1: {
+				totalExpenses: categorizeResult.totalExpenses,
+				alreadyCategorized: categorizeResult.alreadyCategorized,
+				newlyCategorized: categorizeResult.newlyCategorized,
+				errors: categorizeResult.errors,
+			},
+			phase2: {
+				processedMerchants: mappingResult.processedMerchants,
+				created: mappingResult.createdMappings,
+				updated: mappingResult.updatedMappings,
+				skipped: mappingResult.skippedMerchants,
+			},
+			summary: {
+				totalCategorized: categorizeResult.newlyCategorized,
+				merchantsMapped: mappingResult.processedMerchants,
+			},
+		}
 	},
 })
