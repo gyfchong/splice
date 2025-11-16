@@ -105,6 +105,7 @@ function HomePage() {
 				let totalCategorizedFromCache = 0;
 				let totalUncategorized = 0;
 				let fileIndex = 0;
+				const uploadedMonths = new Set<string>(); // Track unique year-month combinations
 
 				for (const fileResult of result.files) {
 					fileIndex++;
@@ -125,6 +126,12 @@ function HomePage() {
 
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
+
+						// Track the months from these expenses
+						for (const expense of expenses) {
+							const yearMonth = `${expense.year}-${expense.month}`;
+							uploadedMonths.add(yearMonth);
+						}
 
 						// Add expenses with known categories only (no AI)
 						const addResult = await addExpensesWithKnownCategories({
@@ -165,6 +172,18 @@ function HomePage() {
 						...prev,
 						status: "completed",
 					}));
+
+					// Navigate to the oldest month of uploaded expenses
+					if (uploadedMonths.size > 0) {
+						const sortedMonths = Array.from(uploadedMonths).sort();
+						const oldestMonth = sortedMonths[0]; // YYYY-MM format sorts correctly
+						setTimeout(() => {
+							navigate({
+								to: "/m/$yearMonth",
+								params: { yearMonth: oldestMonth },
+							});
+						}, 1000);
+					}
 
 					// Check for uncategorized expenses and show toast notification
 					if (totalUncategorized > 0) {
