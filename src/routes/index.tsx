@@ -272,7 +272,7 @@ function HomePage() {
 				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""}`}
 			>
 				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
-					Expense Splitter
+					Luman
 				</h1>
 				<p className="text-gray-400 text-center mb-12">
 					Upload PDF or CSV statements to track and split expenses 50/50
