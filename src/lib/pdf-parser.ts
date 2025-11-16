@@ -1,5 +1,4 @@
-import { PDFParse } from "pdf-parse";
-import { CanvasFactory } from "pdf-parse/worker";
+import { extractText, getDocumentProxy } from "unpdf";
 
 export interface ParsedExpense {
 	expenseId: string;
@@ -246,20 +245,24 @@ export async function parsePDF(
 	buffer: Buffer,
 	autoCheck = false,
 ): Promise<ParseResult> {
-	let parser: PDFParse | null = null;
 	try {
 		console.log("[PDF Parser] Starting PDF parsing...");
-		// Use CanvasFactory for Node.js/serverless environments to fix DOMMatrix error
-		parser = new PDFParse({ data: buffer, CanvasFactory });
-		const result = await parser.getText();
-		console.log(
-			`[PDF Parser] Extracted ${result.text.length} characters from PDF`,
-		);
+
+		// Convert Buffer to Uint8Array for unpdf
+		const uint8Array = new Uint8Array(buffer);
+
+		// Get PDF document proxy
+		const pdf = await getDocumentProxy(uint8Array);
+
+		// Extract text from all pages
+		const { text } = await extractText(pdf, { mergePages: true });
+
+		console.log(`[PDF Parser] Extracted ${text.length} characters from PDF`);
 
 		// Log first 500 chars for debugging
-		console.log("[PDF Parser] First 500 chars:", result.text.substring(0, 500));
+		console.log("[PDF Parser] First 500 chars:", text.substring(0, 500));
 
-		const expenses = extractExpenses(result.text, autoCheck);
+		const expenses = extractExpenses(text, autoCheck);
 
 		if (expenses.length === 0) {
 			console.error("[PDF Parser] No expenses found in PDF");
@@ -284,10 +287,5 @@ export async function parsePDF(
 			errorMessage:
 				error instanceof Error ? error.message : "Failed to parse PDF",
 		};
-	} finally {
-		// Always destroy the parser to free memory
-		if (parser) {
-			await parser.destroy();
-		}
 	}
 }
