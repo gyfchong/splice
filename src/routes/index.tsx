@@ -275,7 +275,7 @@ function HomePage() {
 					Luman
 				</h1>
 				<p className="text-gray-400 text-center mb-12">
-					Upload PDF or CSV statements to track and split expenses 50/50
+					Your personal expense tracker
 				</p>
 
 				{/* Upload Area - Accessible File Upload */}
