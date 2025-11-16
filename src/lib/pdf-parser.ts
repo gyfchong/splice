@@ -127,13 +127,26 @@ function extractExpenses(text: string, autoCheck = false): ParsedExpense[] {
 
 	// Generic pattern for other statements
 	const amountPattern = /\$?\s*-?\d{1,3}(?:,\d{3})*(?:\.\d{2})?/;
-	const datePattern = /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/;
+	// Match both slash/dash format (31/03/25) and month name format (31 Mar 25)
+	const datePattern =
+		/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{2,4}\b/i;
 
 	console.log(`[Extract] Processing ${lines.length} lines`);
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i].trim();
 		if (!line) continue;
+
+		// Skip header lines
+		if (
+			line.includes("Transaction Listing") ||
+			line.includes("Account Balance") ||
+			(line.includes("Date") && line.includes("Particulars")) ||
+			line.includes("Opening Balance") ||
+			line.includes("Closing Balance")
+		) {
+			continue;
+		}
 
 		// Try NAB format first
 		const nabMatch = line.match(nabPattern);
@@ -180,6 +193,10 @@ function extractExpenses(text: string, autoCheck = false): ParsedExpense[] {
 			const dateStr = dateMatch[0];
 			const amountStr = amountMatch[0].replace(/[$,\s]/g, "");
 			const amount = Math.abs(Number.parseFloat(amountStr));
+
+			console.log(
+				`[Extract] Found potential expense - Date: "${dateStr}", Amount: "${amountStr}", Line: "${line.substring(0, 80)}..."`,
+			);
 
 			// Extract the description (everything between date and amount)
 			const dateIndex = line.indexOf(dateStr);
