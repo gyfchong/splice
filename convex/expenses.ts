@@ -1,6 +1,6 @@
 import { action, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
-import { api } from "./_generated/api"
+import { api, internal } from "./_generated/api"
 
 // Get all years that have expenses
 export const getYears = query({
@@ -162,6 +162,7 @@ export const addExpenses = mutation({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
+				split: v.optional(v.boolean()), // Optional, whether expense is split (50/50) or not (100%)
 				category: v.optional(v.string()), // Optional category
 				merchantName: v.optional(v.string()), // Optional normalized merchant name
 			}),
@@ -182,7 +183,7 @@ export const addExpenses = mutation({
 				await ctx.db.insert("expenses", {
 					...expense,
 					checked: expense.checked ?? false, // Use provided value or default to false
-					split: true, // Default to split (50/50)
+					split: expense.split ?? true, // Use provided value or default to split (50/50)
 					uploadTimestamp: Date.now(),
 					category: expense.category,
 					merchantName: expense.merchantName,
@@ -473,9 +474,17 @@ export const updateExpenseWithCategoryAndMerchant = internalMutation({
  * Add expenses with automatic categorization
  * This action:
  * 1. Takes parsed expenses from PDF/CSV
- * 2. Normalizes merchant names
- * 3. Categorizes each expense using AI or cached mappings
- * 4. Adds expenses to database with categories
+ * 2. Saves ALL expenses to database first (graceful degradation)
+ * 3. Normalizes merchant names
+ * 4. Deduplicates merchants to reduce API calls
+ * 5. Categorizes each UNIQUE merchant using AI or cached mappings (with delays)
+ * 6. Updates expenses with categories
+ *
+ * PHASE 1 IMPROVEMENTS:
+ * - Saves expenses first to prevent data loss
+ * - Batch deduplication (one API call per unique merchant)
+ * - 4-second delays between AI calls to respect rate limits (15 req/min)
+ * - Graceful error handling - continues on rate limit errors
  */
 export const addExpensesWithCategories = action({
 	args: {
@@ -488,9 +497,11 @@ export const addExpensesWithCategories = action({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()),
+				split: v.optional(v.boolean()), // Whether expense is split (50/50) or not (100%)
 			}),
 		),
 		userId: v.optional(v.string()),
+		delayMs: v.optional(v.number()), // Delay between AI calls (default: 4000ms)
 	},
 	handler: async (
 		ctx,
@@ -499,49 +510,150 @@ export const addExpensesWithCategories = action({
 		addedCount: number
 		duplicateCount: number
 		newExpenseIds: string[]
+		categorizedCount: number
+		failedMerchants: string[]
+		totalMerchants: number
 	}> => {
 		const { normalizeMerchant } = await import("./utils")
+		const delayMs = args.delayMs ?? 4000 // Default 4 seconds (15 req/min for 16/min limit)
 
-		const expensesWithCategories: Array<{
-			expenseId: string
-			name: string
-			amount: number
-			date: string
-			year: number
-			month: string
-			checked?: boolean
-			category: string
-			merchantName: string
-		}> = []
+		// STEP 1: Save ALL expenses immediately (without categories)
+		// This ensures data is never lost, even if categorization fails
+		console.log(`[addExpensesWithCategories] Saving ${args.expenses.length} expenses to database...`)
 
-		// Categorize each expense
-		for (const expense of args.expenses) {
-			// Normalize merchant name
-			const merchantName = normalizeMerchant(expense.name)
+		const expensesWithMerchants = args.expenses.map((expense) => ({
+			...expense,
+			merchantName: normalizeMerchant(expense.name),
+			category: undefined, // Will be filled in later
+			split: expense.split ?? true, // Default to split (50/50) if not specified
+		}))
 
-			// Get category for this merchant
-			const category = await ctx.runAction(api.categorization.getCategoryForMerchant, {
-				merchantName,
-				description: expense.name,
-				userId: args.userId,
-			})
+		const saveResult = await ctx.runMutation(api.expenses.addExpenses, {
+			expenses: expensesWithMerchants,
+		})
 
-			expensesWithCategories.push({
-				...expense,
-				category,
-				merchantName,
+		console.log(
+			`[addExpensesWithCategories] Saved ${saveResult.addedCount} new expenses, ${saveResult.duplicateCount} duplicates`,
+		)
+
+		// STEP 2: Deduplicate merchants to minimize API calls
+		// Group expenses by normalized merchant name
+		const merchantGroups = new Map<
+			string,
+			Array<{
+				expenseId: string
+				name: string
+				merchantName: string
+			}>
+		>()
+
+		for (const expense of expensesWithMerchants) {
+			if (!merchantGroups.has(expense.merchantName)) {
+				merchantGroups.set(expense.merchantName, [])
+			}
+			merchantGroups.get(expense.merchantName)!.push({
+				expenseId: expense.expenseId,
+				name: expense.name,
+				merchantName: expense.merchantName,
 			})
 		}
 
-		// Add all expenses to database
-		const result: {
-			addedCount: number
-			duplicateCount: number
-			newExpenseIds: string[]
-		} = await ctx.runMutation(api.expenses.addExpenses, {
-			expenses: expensesWithCategories,
-		})
+		console.log(
+			`[addExpensesWithCategories] Deduplication: ${args.expenses.length} expenses → ${merchantGroups.size} unique merchants`,
+		)
 
-		return result
+		// STEP 3: Categorize each UNIQUE merchant with delays and error handling
+		let categorizedCount = 0
+		const failedMerchants: string[] = []
+
+		let merchantIndex = 0
+		for (const [merchantName, expenses] of merchantGroups.entries()) {
+			merchantIndex++
+
+			try {
+				console.log(
+					`[addExpensesWithCategories] Categorizing merchant ${merchantIndex}/${merchantGroups.size}: ${merchantName} (${expenses.length} expenses)`,
+				)
+
+				// Get category for this merchant (checks cache first)
+				const category = await ctx.runAction(
+					api.categorization.getCategoryForMerchant,
+					{
+						merchantName,
+						description: expenses[0].name,
+						userId: args.userId,
+					},
+				)
+
+				// Update ALL expenses from this merchant with the category
+				for (const expense of expenses) {
+					try {
+						await ctx.runMutation(internal.expenses.updateExpenseCategory, {
+							expenseId: expense.expenseId,
+							category,
+						})
+						categorizedCount++
+					} catch (updateError) {
+						console.error(
+							`[addExpensesWithCategories] Failed to update expense ${expense.expenseId}:`,
+							updateError,
+						)
+					}
+				}
+
+				console.log(
+					`[addExpensesWithCategories] ✓ Categorized ${merchantName} as "${category}" (${expenses.length} expenses)`,
+				)
+
+				// CRITICAL: Add delay between AI calls to respect rate limits
+				// 4 seconds = 15 req/min (safely under 16 req/min limit)
+				if (merchantIndex < merchantGroups.size && delayMs > 0) {
+					console.log(`[addExpensesWithCategories] Waiting ${delayMs}ms before next API call...`)
+					await new Promise((resolve) => setTimeout(resolve, delayMs))
+				}
+			} catch (error) {
+				const errorMessage = (error as Error).message || String(error)
+				console.error(`[addExpensesWithCategories] Error categorizing merchant ${merchantName}:`, error)
+
+				// Check if this is a rate limit error
+				if (errorMessage.includes("RATE_LIMIT")) {
+					console.warn(
+						`[addExpensesWithCategories] ⚠ Rate limit hit for ${merchantName}. Continuing with remaining merchants...`,
+					)
+					failedMerchants.push(merchantName)
+
+					// Add longer delay after rate limit error
+					if (merchantIndex < merchantGroups.size) {
+						const backoffDelay = delayMs * 2 // Double the delay
+						console.log(`[addExpensesWithCategories] Waiting ${backoffDelay}ms after rate limit...`)
+						await new Promise((resolve) => setTimeout(resolve, backoffDelay))
+					}
+				} else {
+					// Non-rate-limit error - still continue but log it
+					console.error(`[addExpensesWithCategories] Non-rate-limit error for ${merchantName}:`, errorMessage)
+					failedMerchants.push(merchantName)
+				}
+
+				// Continue with next merchant instead of failing entire upload
+			}
+		}
+
+		const successRate = Math.round((categorizedCount / args.expenses.length) * 100)
+		console.log(
+			`[addExpensesWithCategories] Categorization complete: ${categorizedCount}/${args.expenses.length} expenses (${successRate}%)`,
+		)
+
+		if (failedMerchants.length > 0) {
+			console.warn(`[addExpensesWithCategories] Failed merchants (${failedMerchants.length}):`, failedMerchants)
+		}
+
+		return {
+			addedCount: saveResult.addedCount,
+			duplicateCount: saveResult.duplicateCount,
+			newExpenseIds: saveResult.newExpenseIds,
+			categorizedCount,
+			failedMerchants,
+			totalMerchants: merchantGroups.size,
+		}
 	},
 })
