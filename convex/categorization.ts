@@ -881,3 +881,55 @@ export const addCustomCategory = mutation({
 		return trimmedName
 	},
 })
+
+/**
+ * PHASE 3: Update expense category (for job queue worker)
+ * Updates an expense's category and optionally creates merchant mappings
+ */
+export const updateExpenseCategory = internalMutation({
+	args: {
+		expenseId: v.string(),
+		category: v.string(),
+		merchantName: v.optional(v.string()),
+		userId: v.optional(v.string()),
+	},
+	handler: async (ctx, { expenseId, category, merchantName, userId }) => {
+		// Find the expense
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error(`Expense not found: ${expenseId}`)
+		}
+
+		// Update expense with category
+		await ctx.db.patch(expense._id, {
+			category,
+			merchantName: merchantName || expense.merchantName,
+		})
+
+		// If merchantName provided, update global mapping
+		if (merchantName) {
+			const existingMapping = await ctx.db
+				.query("merchantMappings")
+				.withIndex("by_merchant", (q) => q.eq("merchantName", merchantName))
+				.first()
+
+			if (!existingMapping) {
+				// Create new global mapping
+				await ctx.db.insert("merchantMappings", {
+					merchantName,
+					category,
+					confidence: "ai",
+					voteCount: 0,
+					aiSuggestion: category,
+					lastUpdated: Date.now(),
+				})
+			}
+		}
+
+		return { success: true }
+	},
+})
