@@ -21,6 +21,11 @@ const CATEGORIES = [
 /**
  * Categorizes a merchant using OpenRouter + Groq
  * This is an action because it makes external API calls
+ *
+ * PHASE 1 IMPROVEMENTS:
+ * - Better rate limit error handling with retry-after parsing
+ * - Enhanced logging for debugging
+ * - Graceful fallback to "Other" for non-critical errors
  */
 export const categorizeMerchantWithAI = action({
 	args: {
@@ -31,11 +36,13 @@ export const categorizeMerchantWithAI = action({
 		const apiKey = process.env.OPENROUTER_API_KEY
 
 		if (!apiKey) {
-			console.warn("OPENROUTER_API_KEY not set, defaulting to 'Other' category")
+			console.warn("[categorizeMerchantWithAI] OPENROUTER_API_KEY not set, defaulting to 'Other' category")
 			return "Other"
 		}
 
 		try {
+			console.log(`[categorizeMerchantWithAI] Categorizing merchant: ${merchantName}`)
+
 			const prompt = `You are an expense categorization assistant. Categorize the following merchant/transaction into ONE of these categories:
 
 ${CATEGORIES.join(", ")}
@@ -45,6 +52,7 @@ Transaction description: ${description}
 
 Respond with ONLY the category name, nothing else. Choose the most appropriate category.`
 
+			const requestStart = Date.now()
 			const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
 				method: "POST",
 				headers: {
@@ -66,17 +74,30 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
 				}),
 			})
 
+			const requestDuration = Date.now() - requestStart
+			console.log(`[categorizeMerchantWithAI] API request completed in ${requestDuration}ms (status: ${response.status})`)
+
 			if (!response.ok) {
 				const errorText = await response.text()
-				console.error("OpenRouter API error:", response.status, errorText)
+				console.error("[categorizeMerchantWithAI] OpenRouter API error:", response.status, errorText)
 
 				// Handle rate limiting specially
 				if (response.status === 429) {
+					console.warn(`[categorizeMerchantWithAI] ⚠ Rate limit hit for merchant: ${merchantName}`)
+
 					try {
 						const errorData = JSON.parse(errorText)
-						const resetTime = errorData.error?.metadata?.headers?.["X-RateLimit-Reset"]
-						if (resetTime) {
-							throw new Error(`RATE_LIMIT:${resetTime}`)
+
+						// Try to extract retry-after time from various possible locations
+						const retryAfter =
+							errorData.error?.metadata?.headers?.["retry-after"] ||
+							errorData.error?.metadata?.headers?.["Retry-After"] ||
+							errorData.error?.metadata?.headers?.["X-RateLimit-Reset"] ||
+							null
+
+						if (retryAfter) {
+							console.log(`[categorizeMerchantWithAI] Rate limit reset time: ${retryAfter}`)
+							throw new Error(`RATE_LIMIT:${retryAfter}`)
 						}
 					} catch (parseError) {
 						// If we can't parse the reset time, throw generic rate limit error
@@ -87,11 +108,15 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
 					throw new Error("RATE_LIMIT")
 				}
 
+				// For other HTTP errors, log and return fallback
+				console.warn(`[categorizeMerchantWithAI] HTTP ${response.status} error, using fallback category "Other"`)
 				return "Other"
 			}
 
 			const data = await response.json()
 			const category = data.choices[0]?.message?.content?.trim() || "Other"
+
+			console.log(`[categorizeMerchantWithAI] ✓ AI categorized ${merchantName} as "${category}"`)
 
 			// Validate that the response is a valid category
 			if (CATEGORIES.includes(category)) {
@@ -101,18 +126,23 @@ Respond with ONLY the category name, nothing else. Choose the most appropriate c
 			// If AI returned something unexpected, try to find a match
 			for (const validCategory of CATEGORIES) {
 				if (category.toLowerCase().includes(validCategory.toLowerCase())) {
+					console.log(`[categorizeMerchantWithAI] Fuzzy matched "${category}" → "${validCategory}"`)
 					return validCategory
 				}
 			}
 
-			console.warn(`AI returned invalid category: ${category}, defaulting to 'Other'`)
+			console.warn(
+				`[categorizeMerchantWithAI] AI returned invalid category: "${category}", defaulting to 'Other'`,
+			)
 			return "Other"
 		} catch (error) {
-			console.error("Error categorizing with AI:", error)
+			console.error("[categorizeMerchantWithAI] Error categorizing with AI:", error)
 			// Re-throw rate limit errors so they can be handled upstream
 			if ((error as Error).message?.startsWith("RATE_LIMIT")) {
 				throw error
 			}
+			// For all other errors, fallback to "Other"
+			console.warn(`[categorizeMerchantWithAI] Falling back to "Other" category for ${merchantName}`)
 			return "Other"
 		}
 	},
@@ -316,6 +346,10 @@ export const voteForCategory = internalMutation({
  * 2. Check global mapping
  * 3. Use AI if no mapping exists
  * 4. Store result in global mapping
+ *
+ * PHASE 1 IMPROVEMENTS:
+ * - Enhanced logging to track cache hits vs AI calls
+ * - Better error propagation for rate limit handling
  */
 export const getCategoryForMerchant = action({
 	args: {
@@ -328,6 +362,7 @@ export const getCategoryForMerchant = action({
 		if (userId) {
 			const personal = await ctx.runQuery(api.categorization.getPersonalMapping, { userId, merchantName })
 			if (personal) {
+				console.log(`[getCategoryForMerchant] ✓ Personal mapping found for ${merchantName}: ${personal.category}`)
 				return personal.category
 			}
 		}
@@ -335,21 +370,43 @@ export const getCategoryForMerchant = action({
 		// 2. Check global mapping
 		const global = await ctx.runQuery(api.categorization.getGlobalMapping, { merchantName })
 		if (global) {
+			console.log(
+				`[getCategoryForMerchant] ✓ Global mapping found for ${merchantName}: ${global.category} (confidence: ${global.confidence})`,
+			)
 			return global.category
 		}
 
-		// 3. Use AI to categorize
-		const category = await ctx.runAction(api.categorization.categorizeMerchantWithAI, { merchantName, description })
+		// 3. Use AI to categorize (this may throw RATE_LIMIT error)
+		console.log(`[getCategoryForMerchant] No cached mapping for ${merchantName}, calling AI...`)
 
-		// 4. Store in global mapping for future use
-		await ctx.runMutation(internal.categorization.upsertGlobalMapping, {
-			merchantName,
-			category,
-			confidence: "ai",
-			aiSuggestion: category,
-		})
+		try {
+			const category = await ctx.runAction(api.categorization.categorizeMerchantWithAI, {
+				merchantName,
+				description,
+			})
 
-		return category
+			// 4. Store in global mapping for future use
+			await ctx.runMutation(internal.categorization.upsertGlobalMapping, {
+				merchantName,
+				category,
+				confidence: "ai",
+				aiSuggestion: category,
+			})
+
+			console.log(`[getCategoryForMerchant] ✓ AI categorized ${merchantName} as ${category}, saved to global mapping`)
+
+			return category
+		} catch (error) {
+			// Propagate rate limit errors upstream so they can be handled gracefully
+			if ((error as Error).message?.startsWith("RATE_LIMIT")) {
+				console.error(`[getCategoryForMerchant] Rate limit error for ${merchantName}, propagating upstream`)
+				throw error
+			}
+
+			// For other errors, log and re-throw
+			console.error(`[getCategoryForMerchant] Unexpected error for ${merchantName}:`, error)
+			throw error
+		}
 	},
 })
 
