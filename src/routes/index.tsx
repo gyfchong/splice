@@ -2,7 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Calendar, RefreshCw, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
@@ -11,7 +12,7 @@ export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
 	const navigate = useNavigate();
-	const { add: addToast } = useToast();
+	const { toast } = useToast();
 	const years = useQuery(api.expenses.getYears);
 	const addExpensesWithCategories = useAction(
 		api.expenses.addExpensesWithCategories,
@@ -222,14 +223,18 @@ function HomePage() {
 							const uncategorizedCount = allFailedMerchants.length;
 
 							if (uncategorizedCount > 0) {
-								addToast({
+								toast({
 									title: `${uncategorizedCount} expense${uncategorizedCount === 1 ? "" : "s"} need${uncategorizedCount === 1 ? "s" : ""} categorization`,
 									description: "Some merchants are not yet recognized.",
-									timeout: 10000, // Show for 10 seconds
-									actionProps: {
-										children: "Categorize Now",
-										onClick: () => navigate({ to: "/admin" }),
-									},
+									duration: 10000, // Show for 10 seconds
+									action: (
+										<ToastAction
+											altText="Categorize Now"
+											onClick={() => navigate({ to: "/admin" })}
+										>
+											Categorize Now
+										</ToastAction>
+									),
 								});
 							}
 						} catch (error) {

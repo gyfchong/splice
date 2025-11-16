@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useAction, useQuery } from "convex/react"
 import { useState } from "react"
-import { useToast } from "@/components/ui/toast"
+import { useToast } from "@/components/ui/use-toast"
 import { api } from "../../convex/_generated/api"
 import { Button } from "@/components/ui/button"
 
@@ -46,23 +46,21 @@ function AllCaughtUp({ stats }: { stats: any }) {
 
 function AdminDashboard({ stats }: { stats: any }) {
 	const runWorkflow = useAction(api.categorization.runFullCategorizationWorkflow)
-	const { add: addToast } = useToast()
+	const { toast } = useToast()
 	const [isProcessing, setIsProcessing] = useState(false)
 
 	const handleRunWorkflow = async () => {
 		setIsProcessing(true)
 		try {
 			const result = await runWorkflow()
-			addToast({
+			toast({
 				title: "Categorization complete!",
 				description: `${result.phase1.newlyCategorized} expenses categorized, ${result.phase2.created} merchants mapped.`,
-				type: "success",
 			})
 		} catch (error: any) {
-			addToast({
+			toast({
 				title: "Categorization failed",
 				description: error.message,
-				type: "error",
 			})
 		} finally {
 			setIsProcessing(false)
