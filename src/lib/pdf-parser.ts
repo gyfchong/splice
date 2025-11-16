@@ -1,5 +1,4 @@
-import { PDFParse } from "pdf-parse";
-import { CanvasFactory } from "pdf-parse/worker";
+import { extractText, getDocumentProxy } from "unpdf";
 
 export interface ParsedExpense {
 	expenseId: string;
@@ -246,20 +245,36 @@ export async function parsePDF(
 	buffer: Buffer,
 	autoCheck = false,
 ): Promise<ParseResult> {
-	let parser: PDFParse | null = null;
 	try {
 		console.log("[PDF Parser] Starting PDF parsing...");
-		// Use CanvasFactory for Node.js/serverless environments to fix DOMMatrix error
-		parser = new PDFParse({ data: buffer, CanvasFactory });
-		const result = await parser.getText();
+
+		// Convert Buffer to Uint8Array for unpdf
+		const uint8Array = new Uint8Array(buffer);
+
+		// Get PDF document proxy
+		const pdf = await getDocumentProxy(uint8Array);
+
+		// Extract text from all pages separately (not merged) to preserve line structure
+		const { text: pageTexts, totalPages } = await extractText(pdf, {
+			mergePages: false,
+		});
+
+		console.log(`[PDF Parser] Extracted text from ${totalPages} pages`);
+
+		// Combine all page texts with newline separator to preserve line structure
+		const combinedText = pageTexts.join("\n");
+
 		console.log(
-			`[PDF Parser] Extracted ${result.text.length} characters from PDF`,
+			`[PDF Parser] Combined text length: ${combinedText.length} characters`,
 		);
 
 		// Log first 500 chars for debugging
-		console.log("[PDF Parser] First 500 chars:", result.text.substring(0, 500));
+		console.log(
+			"[PDF Parser] First 500 chars:",
+			combinedText.substring(0, 500),
+		);
 
-		const expenses = extractExpenses(result.text, autoCheck);
+		const expenses = extractExpenses(combinedText, autoCheck);
 
 		if (expenses.length === 0) {
 			console.error("[PDF Parser] No expenses found in PDF");
@@ -284,10 +299,5 @@ export async function parsePDF(
 			errorMessage:
 				error instanceof Error ? error.message : "Failed to parse PDF",
 		};
-	} finally {
-		// Always destroy the parser to free memory
-		if (parser) {
-			await parser.destroy();
-		}
 	}
 }
