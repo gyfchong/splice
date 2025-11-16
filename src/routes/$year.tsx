@@ -200,7 +200,8 @@ function YearPage() {
 										Categorize Uncategorized Expenses
 									</h3>
 									<p className="text-gray-400 text-sm">
-										Use AI to automatically categorize expenses that don't have categories yet.
+										Use AI to automatically categorize expenses that don't have
+										categories yet.
 									</p>
 									<p className="text-sm text-yellow-400 mt-1">
 										⚠️ Rate Limit: 16 requests/minute (free tier)

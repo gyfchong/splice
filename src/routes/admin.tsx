@@ -1,23 +1,23 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { useAction, useQuery } from "convex/react"
-import { useState } from "react"
-import { useToast } from "@/components/ui/use-toast"
-import { api } from "../../convex/_generated/api"
-import { Button } from "@/components/ui/button"
+import { createFileRoute } from "@tanstack/react-router";
+import { useAction, useQuery } from "convex/react";
+import { useState } from "react";
+import { useToast } from "@/components/ui/use-toast";
+import { api } from "../../convex/_generated/api";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/admin")({
 	component: AdminPage,
-})
+});
 
 function AdminPage() {
-	const stats = useQuery(api.categorization.getAdminDashboardStats)
+	const stats = useQuery(api.categorization.getAdminDashboardStats);
 
 	// Show "nothing to do" message if all categorized
 	if (stats && !stats.needsAttention) {
-		return <AllCaughtUp stats={stats} />
+		return <AllCaughtUp stats={stats} />;
 	}
 
-	return <AdminDashboard stats={stats} />
+	return <AdminDashboard stats={stats} />;
 }
 
 function AllCaughtUp({ stats }: { stats: any }) {
@@ -30,8 +30,8 @@ function AllCaughtUp({ stats }: { stats: any }) {
 						All Caught Up!
 					</h1>
 					<p className="text-xl text-zinc-600 mb-6">
-						All {stats?.expenses.total || 0} expenses are categorized and merchant
-						mappings are up to date.
+						All {stats?.expenses.total || 0} expenses are categorized and
+						merchant mappings are up to date.
 					</p>
 					<div className="inline-block bg-green-100 border border-green-300 rounded-full px-6 py-2">
 						<span className="text-green-700 font-semibold">
@@ -41,38 +41,40 @@ function AllCaughtUp({ stats }: { stats: any }) {
 				</div>
 			</div>
 		</div>
-	)
+	);
 }
 
 function AdminDashboard({ stats }: { stats: any }) {
-	const runWorkflow = useAction(api.categorization.runFullCategorizationWorkflow)
-	const { toast } = useToast()
-	const [isProcessing, setIsProcessing] = useState(false)
+	const runWorkflow = useAction(
+		api.categorization.runFullCategorizationWorkflow,
+	);
+	const { toast } = useToast();
+	const [isProcessing, setIsProcessing] = useState(false);
 
 	const handleRunWorkflow = async () => {
-		setIsProcessing(true)
+		setIsProcessing(true);
 		try {
-			const result = await runWorkflow()
+			const result = await runWorkflow();
 			toast({
 				title: "Categorization complete!",
 				description: `${result.phase1.newlyCategorized} expenses categorized, ${result.phase2.created} merchants mapped.`,
-			})
+			});
 		} catch (error: any) {
 			toast({
 				title: "Categorization failed",
 				description: error.message,
-			})
+			});
 		} finally {
-			setIsProcessing(false)
+			setIsProcessing(false);
 		}
-	}
+	};
 
 	if (!stats) {
 		return (
 			<div className="container mx-auto p-8">
 				<div className="text-center text-zinc-500">Loading...</div>
 			</div>
-		)
+		);
 	}
 
 	return (
@@ -117,7 +119,9 @@ function AdminDashboard({ stats }: { stats: any }) {
 			<div className="bg-white border-2 border-zinc-200 rounded-lg p-8 mb-8">
 				<div className="flex items-start justify-between mb-6">
 					<div>
-						<h2 className="text-2xl font-bold mb-2">Auto-Categorize & Optimize</h2>
+						<h2 className="text-2xl font-bold mb-2">
+							Auto-Categorize & Optimize
+						</h2>
 						<p className="text-zinc-600 max-w-2xl">
 							Automatically categorize{" "}
 							<span className="font-semibold text-cyan-600">
@@ -151,9 +155,10 @@ function AdminDashboard({ stats }: { stats: any }) {
 				{/* Info Note */}
 				<div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
 					<p className="text-sm text-blue-900">
-						<strong>ℹ️ What happens:</strong> The system will categorize uncategorized
-						expenses using AI (respecting rate limits), then rebuild global merchant
-						mappings from all categorized data to improve future auto-categorization.
+						<strong>ℹ️ What happens:</strong> The system will categorize
+						uncategorized expenses using AI (respecting rate limits), then
+						rebuild global merchant mappings from all categorized data to
+						improve future auto-categorization.
 					</p>
 				</div>
 			</div>
@@ -216,7 +221,7 @@ function AdminDashboard({ stats }: { stats: any }) {
 				</div>
 			)}
 		</div>
-	)
+	);
 }
 
 function StatCard({
@@ -226,11 +231,11 @@ function StatCard({
 	icon,
 	highlight,
 }: {
-	title: string
-	value: string | number
-	subtitle: string
-	icon: string
-	highlight?: boolean
+	title: string;
+	value: string | number;
+	subtitle: string;
+	icon: string;
+	highlight?: boolean;
 }) {
 	return (
 		<div
@@ -247,7 +252,7 @@ function StatCard({
 			<div className="text-3xl font-bold text-zinc-900 mb-1">{value}</div>
 			<div className="text-xs text-zinc-500">{subtitle}</div>
 		</div>
-	)
+	);
 }
 
 function JobStatus({
@@ -255,14 +260,14 @@ function JobStatus({
 	count,
 	color,
 }: {
-	label: string
-	count: number
-	color: string
+	label: string;
+	count: number;
+	color: string;
 }) {
 	return (
 		<div className="text-center">
 			<div className={`text-2xl font-bold ${color}`}>{count}</div>
 			<div className="text-xs text-zinc-500">{label}</div>
 		</div>
-	)
+	);
 }
