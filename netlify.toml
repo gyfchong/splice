@@ -1,6 +1,6 @@
 [build]
-  command = "vite build"
+  command = "pnpm deploy:ci"
   dir = "dist/client"
 [dev]
-  command = "vite dev"
+  command = "pnpm dev"
   port = 3000
