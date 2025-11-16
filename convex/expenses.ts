@@ -162,6 +162,7 @@ export const addExpenses = mutation({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
+				split: v.optional(v.boolean()), // Optional, whether expense is split (50/50) or not (100%)
 				category: v.optional(v.string()), // Optional category
 				merchantName: v.optional(v.string()), // Optional normalized merchant name
 			}),
@@ -182,7 +183,7 @@ export const addExpenses = mutation({
 				await ctx.db.insert("expenses", {
 					...expense,
 					checked: expense.checked ?? false, // Use provided value or default to false
-					split: true, // Default to split (50/50)
+					split: expense.split ?? true, // Use provided value or default to split (50/50)
 					uploadTimestamp: Date.now(),
 					category: expense.category,
 					merchantName: expense.merchantName,
@@ -496,6 +497,7 @@ export const addExpensesWithCategories = action({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()),
+				split: v.optional(v.boolean()), // Whether expense is split (50/50) or not (100%)
 			}),
 		),
 		userId: v.optional(v.string()),
@@ -523,6 +525,7 @@ export const addExpensesWithCategories = action({
 			...expense,
 			merchantName: normalizeMerchant(expense.name),
 			category: undefined, // Will be filled in later
+			split: expense.split ?? true, // Default to split (50/50) if not specified
 		}))
 
 		const saveResult = await ctx.runMutation(api.expenses.addExpenses, {
