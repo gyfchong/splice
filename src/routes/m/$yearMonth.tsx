@@ -3,7 +3,9 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ChevronLeft, Tag, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { CategorySelect } from "@/components/CategorySelect";
+import { ExpenseListSkeleton } from "@/components/ExpenseListSkeleton";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
+import { FloatingProgressBar } from "@/components/FloatingProgressBar";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
@@ -52,7 +54,10 @@ function MonthPage() {
 			visitedMonths.push(month);
 			localStorage.setItem(visitedMonthsKey, JSON.stringify(visitedMonths));
 		}
-	}, [year, month]);
+
+		// Track this as the last visited page
+		localStorage.setItem("lastVisitedPage", `/m/${yearMonth}`);
+	}, [year, month, yearMonth]);
 
 	const handleToggleSplit = async (expenseId: string) => {
 		try {
@@ -97,7 +102,7 @@ function MonthPage() {
 	}, [data, activeTab]);
 
 	// Clear selection when tab changes
-	// biome-ignore lint/correctness/useExhaustiveDependencies: We need activeTab to trigger this effect
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activeTab is intentionally the trigger
 	useEffect(() => {
 		setSelectedExpenses(new Set());
 	}, [activeTab]);
@@ -205,7 +210,8 @@ function MonthPage() {
 
 	return (
 		<div className="min-h-screen bg-linear-to-b from-slate-900 via-slate-800 to-slate-900 py-12 px-6">
-			<div className="max-w-6xl mx-auto">
+			<FloatingProgressBar />
+			<div className="max-w-6xl mx-auto page-fade-in">
 				{/* Header */}
 				<div className="mb-8">
 					<Link
@@ -224,7 +230,12 @@ function MonthPage() {
 
 				{/* Loading State */}
 				{data === undefined ? (
-					<div className="text-gray-400">Loading expenses...</div>
+					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+						<div className="mb-4">
+							<div className="h-8 bg-slate-600/30 rounded w-48 animate-pulse" />
+						</div>
+						<ExpenseListSkeleton count={8} />
+					</div>
 				) : data.expenses.length === 0 ? (
 					<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 text-center">
 						<p className="text-gray-400">

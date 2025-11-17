@@ -1,16 +1,22 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useAction, useMutation, useQuery } from "convex/react";
-import { Calendar, ChevronRight, Clock, RefreshCw, Upload } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useAction, useQuery } from "convex/react";
+import {
+	Calendar,
+	ChevronRight,
+	Clock,
+	History,
+	RefreshCw,
+	Upload,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MonthlyExpensesChart } from "@/components/MonthlyExpensesChart";
-import { useToast } from "@/components/ui/use-toast";
 import type { ParsedExpense } from "@/lib/pdf-parser";
 import { api } from "../../convex/_generated/api";
 
 export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-	const { toast } = useToast();
+	const navigate = useNavigate();
 	const years = useQuery(api.expenses.getYears);
 	const expensesFeed = useQuery(api.expenses.getExpensesFeed, {
 		limit: 12, // Show last 12 months
@@ -18,7 +24,6 @@ function HomePage() {
 	const addExpensesWithKnownCategories = useAction(
 		api.expenses.addExpensesWithKnownCategories,
 	);
-	const recordUpload = useMutation(api.expenses.recordUpload);
 	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
@@ -27,7 +32,7 @@ function HomePage() {
 		type: "success" | "error";
 		message: string;
 	} | null>(null);
-	const [uploadProgress, setUploadProgress] = useState<{
+	const [uploadProgress, _setUploadProgress] = useState<{
 		status: "idle" | "uploading" | "completed" | "failed";
 		currentFile: number;
 		totalFiles: number;
@@ -36,18 +41,27 @@ function HomePage() {
 		currentFile: 0,
 		totalFiles: 0,
 	});
+	const [lastVisitedPage, setLastVisitedPage] = useState<string | null>(null);
+	const [isTransitioning, setIsTransitioning] = useState(false);
+
+	// Load last visited page from localStorage
+	useEffect(() => {
+		if (typeof window !== "undefined") {
+			const lastPage = localStorage.getItem("lastVisitedPage");
+			setLastVisitedPage(lastPage);
+
+			// Track home page as last visited when user explicitly navigates here
+			// (but don't track on initial page load if there's a previous page)
+			if (!lastPage) {
+				localStorage.setItem("lastVisitedPage", "/");
+			}
+		}
+	}, []);
 
 	const handleFiles = useCallback(
 		async (files: File[]) => {
 			setIsUploading(true);
 			setUploadStatus(null);
-
-			// Initialize upload progress
-			setUploadProgress({
-				status: "uploading",
-				currentFile: 0,
-				totalFiles: files.length,
-			});
 
 			try {
 				// Upload files to API for parsing
@@ -68,116 +82,111 @@ function HomePage() {
 						type: "error",
 						message: result.errorMessage || "Upload failed",
 					});
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "failed",
-					}));
 					return;
 				}
 
-				// Process each file result
-				let totalExpenses = 0;
-				let totalErrors = 0;
-				let totalCategorizedFromCache = 0;
-				let totalUncategorized = 0;
-				let fileIndex = 0;
+				// Collect all expenses from all files
+				const allExpenses: ParsedExpense[] = [];
+				const uploadedMonths = new Set<string>();
 
 				for (const fileResult of result.files) {
-					fileIndex++;
-
-					// Update progress for current file
-					setUploadProgress((prev) => ({
-						...prev,
-						currentFile: fileIndex,
-					}));
-
-					// Record upload metadata
-					await recordUpload({
-						filename: fileResult.filename,
-						size: fileResult.size,
-						status: fileResult.status,
-						errorMessage: fileResult.errorMessage,
-					});
-
 					if (fileResult.status === "success" && fileResult.expenses) {
 						const expenses = fileResult.expenses as ParsedExpense[];
+						allExpenses.push(...expenses);
 
-						// Add expenses with cache/heuristics categorization and queue AI jobs
-						const addResult = await addExpensesWithKnownCategories({
-							expenses,
-							userId: "anonymous",
-						});
-						totalExpenses += addResult.addedCount;
-						totalCategorizedFromCache +=
-							(addResult.categorizedFromCache || 0) +
-							(addResult.categorizedFromHeuristics || 0);
-						totalUncategorized += addResult.queuedForAI || 0;
-					} else {
-						totalErrors++;
+						for (const expense of expenses) {
+							uploadedMonths.add(`${expense.year}-${expense.month}`);
+						}
 					}
 				}
 
-				if (totalErrors > 0 && totalExpenses === 0) {
+				if (uploadedMonths.size === 0 || allExpenses.length === 0) {
 					setUploadStatus({
 						type: "error",
-						message: `Failed to parse ${totalErrors} file(s)`,
+						message: "No expenses found in uploaded files",
 					});
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "failed",
-					}));
-				} else {
-					const categorizedInfo =
-						totalCategorizedFromCache > 0 || totalUncategorized > 0
-							? ` (${totalCategorizedFromCache} merchants auto-categorized, ${totalUncategorized} queued for AI)`
-							: "";
-
-					setUploadStatus({
-						type: "success",
-						message: `Successfully added ${totalExpenses} expense(s)${categorizedInfo}${
-							totalErrors > 0 ? ` • ${totalErrors} file(s) had errors` : ""
-						}`,
-					});
-
-					setUploadProgress((prev) => ({
-						...prev,
-						status: "completed",
-					}));
-
-					// Check for queued expenses and show toast notification
-					// Scroll to feed after successful upload
-					setTimeout(() => {
-						feedTopRef.current?.scrollIntoView({
-							behavior: "smooth",
-							block: "start",
-						});
-					}, 500);
-
-					// Check for uncategorized expenses and show toast notification
-					if (totalUncategorized > 0) {
-						setTimeout(() => {
-							toast({
-								title: `${totalUncategorized} expense${totalUncategorized === 1 ? "" : "s"} queued for AI categorization`,
-								description: "Background worker will categorize them shortly.",
-								duration: 8000, // Show for 8 seconds
-							});
-						}, 2000);
-					}
+					return;
 				}
+
+				// Determine oldest month
+				const sortedMonths = Array.from(uploadedMonths).sort();
+				const oldestMonth = sortedMonths[0];
+
+				// Initialize progress in localStorage
+				localStorage.setItem(
+					"uploadProgress",
+					JSON.stringify({
+						status: "uploading",
+						current: 0,
+						total: allExpenses.length,
+						yearMonth: oldestMonth,
+					}),
+				);
+
+				// Trigger shrink animation and navigate
+				setIsTransitioning(true);
+				setTimeout(() => {
+					navigate({
+						to: "/m/$yearMonth",
+						params: { yearMonth: oldestMonth },
+					});
+
+					// Process expenses in background after navigation
+					setTimeout(async () => {
+						const BATCH_SIZE = 8;
+						let processed = 0;
+
+						for (let i = 0; i < allExpenses.length; i += BATCH_SIZE) {
+							const batch = allExpenses.slice(i, i + BATCH_SIZE);
+
+							await addExpensesWithKnownCategories({
+								expenses: batch,
+								userId: "anonymous",
+							});
+
+							processed += batch.length;
+
+							// Update progress
+							localStorage.setItem(
+								"uploadProgress",
+								JSON.stringify({
+									status: "uploading",
+									current: processed,
+									total: allExpenses.length,
+									yearMonth: oldestMonth,
+								}),
+							);
+							window.dispatchEvent(new Event("storage"));
+
+							// Delay between batches
+							if (i + BATCH_SIZE < allExpenses.length) {
+								await new Promise((resolve) => setTimeout(resolve, 200));
+							}
+						}
+
+						// Mark complete
+						localStorage.setItem(
+							"uploadProgress",
+							JSON.stringify({
+								status: "completed",
+								current: allExpenses.length,
+								total: allExpenses.length,
+								yearMonth: oldestMonth,
+							}),
+						);
+						window.dispatchEvent(new Event("storage"));
+					}, 100);
+				}, 300);
 			} catch (error) {
 				setUploadStatus({
 					type: "error",
 					message: error instanceof Error ? error.message : "Upload failed",
 				});
-				setUploadProgress((prev) => ({
-					...prev,
-					status: "failed",
-				}));
 			} finally {
 				setIsUploading(false);
 			}
 		},
-		[addExpensesWithKnownCategories, recordUpload, toast],
+		[navigate, addExpensesWithKnownCategories],
 	);
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -277,16 +286,29 @@ function HomePage() {
 			)}
 
 			<div
-				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""}`}
+				className={`max-w-4xl mx-auto ${uploadProgress.status === "uploading" ? "mt-24" : ""} ${isTransitioning ? "upload-shrinking" : ""}`}
 			>
 				<h1 className="text-4xl md:text-5xl font-bold text-white mb-4 text-center">
 					Luman
 				</h1>
-				<p className="text-gray-400 text-center mb-12">
+				<p className="text-gray-400 text-center mb-6">
 					{hasExpenses
 						? "Your personal expense tracker"
 						: "Upload your expenses to get started"}
 				</p>
+
+				{/* Last Visited Page - Show if exists and not on home page initially */}
+				{lastVisitedPage && lastVisitedPage !== "/" && (
+					<div className="mb-6 flex justify-center">
+						<Link
+							to={lastVisitedPage}
+							className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-400 rounded-lg transition-colors font-medium"
+						>
+							<History className="w-4 h-4" />
+							Return to last visited page
+						</Link>
+					</div>
+				)}
 
 				{/* Upload Area - Compact when expenses exist, prominent when empty */}
 				<div className={`${hasExpenses ? "mb-8" : "mb-12"}`}>

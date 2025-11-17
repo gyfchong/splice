@@ -136,3 +136,57 @@ code {
     @apply bg-background text-foreground;
   }
 }
+
+/* Upload area transition animations */
+@keyframes shrinkToProgress {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    max-height: 1000px;
+  }
+  60% {
+    opacity: 0.5;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.3) translateY(-200px);
+    max-height: 80px;
+  }
+}
+
+/* Page fade in from bottom */
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.upload-shrinking {
+  animation: shrinkToProgress 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.page-fade-in {
+  animation: fadeInUp 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Floating progress bar slide down */
+@keyframes slideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}

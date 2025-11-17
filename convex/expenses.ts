@@ -1627,3 +1627,64 @@ export const getExpensesFeed = query({
 		return formattedMonths
 	},
 })
+
+// Get all months grouped by year for navigation
+export const getMonthsGroupedByYear = query({
+	args: {},
+	handler: async (ctx) => {
+		// Get all expenses
+		const allExpenses = await ctx.db.query("expenses").collect()
+
+		// Group by year and month using plain objects and arrays
+		const yearMonthObj: Record<number, string[]> = {}
+
+		for (const expense of allExpenses) {
+			if (!yearMonthObj[expense.year]) {
+				yearMonthObj[expense.year] = []
+			}
+			// Only add if not already present
+			if (!yearMonthObj[expense.year].includes(expense.month)) {
+				yearMonthObj[expense.year].push(expense.month)
+			}
+		}
+
+		const monthNames = [
+			"Jan",
+			"Feb",
+			"Mar",
+			"Apr",
+			"May",
+			"Jun",
+			"Jul",
+			"Aug",
+			"Sep",
+			"Oct",
+			"Nov",
+			"Dec",
+		]
+
+		// Convert to sorted array structure
+		const result = Object.entries(yearMonthObj)
+			.map(([yearStr, monthsArray]) => {
+				const year = Number.parseInt(yearStr, 10)
+				const months = monthsArray
+					.sort((a, b) => Number.parseInt(b, 10) - Number.parseInt(a, 10)) // Sort months descending (newest first)
+					.map((month) => {
+						const monthIndex = Number.parseInt(month, 10) - 1
+						return {
+							month,
+							monthName: monthNames[monthIndex],
+							yearMonth: `${year}-${month}`,
+						}
+					})
+
+				return {
+					year,
+					months,
+				}
+			})
+			.sort((a, b) => b.year - a.year) // Sort years descending (newest first)
+
+		return result
+	},
+})
