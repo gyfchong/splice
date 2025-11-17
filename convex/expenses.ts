@@ -1051,18 +1051,9 @@ export const addExpensesWithBackgroundCategorization = action({
 						`[Phase 3] ✓ Categorized ${merchantName} as "${category}" (${expenses.length} expenses) [source: ${source}]`,
 					)
 				} else {
-					// No category found - queue for background AI categorization
-					console.log(`[Phase 3] ⏳ Queueing ${merchantName} for background AI categorization`)
-
-					for (const expense of expenses) {
-						await ctx.runMutation(internal.jobQueue.createJob, {
-							expenseId: expense.expenseId,
-							merchantName,
-							description: expense.name,
-							userId: args.userId,
-						})
-						queuedCount++
-					}
+					// No category found - leave uncategorized
+					console.log(`[Phase 3] Could not categorize ${merchantName} - left uncategorized (${expenses.length} expenses)`)
+					queuedCount += expenses.length
 				}
 			} catch (error) {
 				console.error(`[Phase 3] Error processing merchant ${merchantName}:`, error)
@@ -1076,7 +1067,7 @@ export const addExpensesWithBackgroundCategorization = action({
 		console.log(`[Phase 3] Categorized immediately: ${categorizedCount}/${args.expenses.length}`)
 		console.log(`[Phase 3]   - From cache: ${cacheCategorizationCount} merchants`)
 		console.log(`[Phase 3]   - From heuristics: ${heuristicCategorizationCount} merchants`)
-		console.log(`[Phase 3] Queued for background: ${queuedCount}`)
+		console.log(`[Phase 3] Uncategorized: ${queuedCount}`)
 		console.log(`[Phase 3] ==========================================`)
 
 		return {
@@ -1265,19 +1256,10 @@ export const addExpensesWithKnownCategories = action({
 				}
 				console.log(`[addExpensesWithKnownCategories] ✓ Categorized ${expenses.length} expenses for ${merchantName} (${source})`)
 			} else {
-				// No category found - queue for background AI categorization
+				// No category found - leave uncategorized
 				uncategorizedCount++
-				console.log(`[addExpensesWithKnownCategories] ⏳ Queueing ${merchantName} for AI categorization (${expenses.length} expenses)`)
-
-				for (const expense of expenses) {
-					await ctx.runMutation(internal.jobQueue.createJob, {
-						expenseId: expense.expenseId,
-						merchantName,
-						description: expense.name,
-						userId: args.userId,
-					})
-					queuedForAI++
-				}
+				console.log(`[addExpensesWithKnownCategories] Could not categorize ${merchantName} - left uncategorized (${expenses.length} expenses)`)
+			queuedForAI += expenses.length
 			}
 		}
 
@@ -1286,7 +1268,7 @@ export const addExpensesWithKnownCategories = action({
 		console.log(`[addExpensesWithKnownCategories] Unique merchants: ${merchantGroups.size}`)
 		console.log(`[addExpensesWithKnownCategories] Categorized from cache: ${categorizedFromCache} merchants`)
 		console.log(`[addExpensesWithKnownCategories] Categorized from heuristics: ${categorizedFromHeuristics} merchants`)
-		console.log(`[addExpensesWithKnownCategories] Queued for AI: ${queuedForAI} expenses (${uncategorizedCount} merchants)`)
+		console.log(`[addExpensesWithKnownCategories] Uncategorized: ${queuedForAI} expenses (${uncategorizedCount} merchants)`)
 		console.log(`[addExpensesWithKnownCategories] ==========================================`)
 
 		return {
