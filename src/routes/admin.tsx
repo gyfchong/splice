@@ -212,52 +212,6 @@ function AdminDashboard({
 				/>
 			</div>
 
-			{/* Background Processing Info */}
-			<div className="bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
-				<div className="flex items-start gap-4">
-					<div className="text-4xl">⚙️</div>
-					<div className="flex-1">
-						<h2 className="text-xl font-bold mb-2 text-blue-900">
-							Automatic Background Categorization
-						</h2>
-						<p className="text-blue-800 mb-3">
-							The system automatically categorizes uncategorized expenses using:
-						</p>
-						<ul className="space-y-2 text-sm text-blue-700">
-							<li className="flex items-start gap-2">
-								<span className="text-blue-500 mt-0.5">•</span>
-								<span>
-									<strong>Cache & Heuristics</strong> - Instant categorization
-									during upload (~70% success rate)
-								</span>
-							</li>
-							<li className="flex items-start gap-2">
-								<span className="text-blue-500 mt-0.5">•</span>
-								<span>
-									<strong>Background Worker</strong> - Processes 1 job every 5
-									seconds (respects rate limits)
-								</span>
-							</li>
-							<li className="flex items-start gap-2">
-								<span className="text-blue-500 mt-0.5">•</span>
-								<span>
-									<strong>Daily Catchup</strong> - Runs at 2 AM to categorize
-									any remaining uncategorized expenses
-								</span>
-							</li>
-						</ul>
-						{stats.expenses.uncategorized > 0 && (
-							<div className="mt-4 p-3 bg-white/60 rounded border border-blue-300">
-								<p className="text-sm text-blue-900">
-									<strong>{stats.expenses.uncategorized}</strong> expense
-									{stats.expenses.uncategorized === 1 ? "" : "s"} currently
-									queued for background processing.
-								</p>
-							</div>
-						)}
-					</div>
-				</div>
-			</div>
 
 			{/* Danger Zone - Delete All Expenses */}
 			<div className="bg-white border-2 border-red-200 rounded-lg p-8 mb-8">
@@ -305,34 +259,6 @@ function AdminDashboard({
 				</div>
 			</div>
 
-			{/* Job Queue Status */}
-			{(stats.jobQueue.pending > 0 ||
-				stats.jobQueue.processing > 0 ||
-				stats.jobQueue.failed > 0) && (
-				<div className="bg-white border border-zinc-200 rounded-lg p-6 mb-8">
-					<h3 className="text-lg font-semibold mb-4">Background Job Queue</h3>
-					<div className="grid grid-cols-3 gap-4">
-						<JobStatus
-							label="Pending"
-							count={stats.jobQueue.pending || 0}
-							color="text-yellow-600"
-						/>
-						<JobStatus
-							label="Processing"
-							count={stats.jobQueue.processing || 0}
-							color="text-blue-600"
-						/>
-						<JobStatus
-							label="Failed"
-							count={stats.jobQueue.failed || 0}
-							color="text-red-600"
-						/>
-					</div>
-					<p className="text-xs text-zinc-500 mt-4">
-						Background jobs process automatically every 5 seconds (cron job)
-					</p>
-				</div>
-			)}
 
 			{/* Uncategorized Expenses List */}
 			{uncategorizedExpenses &&
@@ -343,8 +269,7 @@ function AdminDashboard({
 							expenses from {uncategorizedExpenses.uniqueMerchants} merchants)
 						</h3>
 						<p className="text-sm text-zinc-500 mb-4">
-							These expenses will be automatically categorized by the background
-							worker, or you can manually select a category below.
+							Manually select a category below to categorize these expenses.
 						</p>
 						<div className="space-y-2 max-h-[500px] overflow-y-auto">
 							{uncategorizedExpenses.groups.map((group) => (
