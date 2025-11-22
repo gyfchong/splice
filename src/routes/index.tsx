@@ -24,7 +24,6 @@ function HomePage() {
 	const addExpensesWithKnownCategories = useAction(
 		api.expenses.addExpensesWithKnownCategories,
 	);
-	const jobQueueStats = useQuery(api.expenses.getJobQueueStats);
 	const [isDragging, setIsDragging] = useState(false);
 	const [isUploading, setIsUploading] = useState(false);
 	const feedTopRef = useRef<HTMLDivElement>(null);
@@ -594,51 +593,6 @@ function HomePage() {
 					</div>
 				)}
 
-				{/* Phase 3: Job Queue Status */}
-				{jobQueueStats &&
-					(jobQueueStats.pending > 0 ||
-						jobQueueStats.processing > 0 ||
-						jobQueueStats.failed > 0) && (
-						<div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-8 mt-8">
-							<h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-								<RefreshCw
-									className={`w-6 h-6 ${jobQueueStats.processing > 0 ? "animate-spin text-cyan-400" : "text-gray-400"}`}
-								/>
-								Background Categorization Queue
-							</h2>
-							<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-								<div className="bg-slate-700/50 rounded-lg p-4">
-									<div className="text-gray-400 text-sm mb-1">Pending</div>
-									<div className="text-2xl font-bold text-yellow-400">
-										{jobQueueStats.pending}
-									</div>
-								</div>
-								<div className="bg-slate-700/50 rounded-lg p-4">
-									<div className="text-gray-400 text-sm mb-1">Processing</div>
-									<div className="text-2xl font-bold text-cyan-400">
-										{jobQueueStats.processing}
-									</div>
-								</div>
-								<div className="bg-slate-700/50 rounded-lg p-4">
-									<div className="text-gray-400 text-sm mb-1">Completed</div>
-									<div className="text-2xl font-bold text-green-400">
-										{jobQueueStats.completed}
-									</div>
-								</div>
-								<div className="bg-slate-700/50 rounded-lg p-4">
-									<div className="text-gray-400 text-sm mb-1">Failed</div>
-									<div className="text-2xl font-bold text-red-400">
-										{jobQueueStats.failed}
-									</div>
-								</div>
-							</div>
-							{jobQueueStats.retryable > 0 && (
-								<div className="mt-4 text-sm text-gray-400">
-									{jobQueueStats.retryable} failed job(s) ready for retry
-								</div>
-							)}
-						</div>
-					)}
 			</div>
 		</div>
 	);

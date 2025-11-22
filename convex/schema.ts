@@ -44,28 +44,4 @@ export default defineSchema({
 		name: v.string(), // Category name
 		createdAt: v.number(), // Timestamp
 	}).index("by_name", ["name"]),
-	// Background categorization job queue (Phase 3)
-	categorizationJobs: defineTable({
-		expenseId: v.string(), // Expense to categorize
-		merchantName: v.string(), // Normalized merchant name
-		description: v.string(), // Expense description for AI context
-		userId: v.optional(v.string()), // User ID for personal mappings
-		status: v.string(), // "pending" | "processing" | "completed" | "failed"
-		attempts: v.number(), // Number of attempts made
-		lastAttempt: v.optional(v.number()), // Timestamp of last attempt
-		nextRetry: v.optional(v.number()), // Timestamp when job can be retried
-		error: v.optional(v.string()), // Error message if failed
-		createdAt: v.number(), // Timestamp
-	})
-		.index("by_status", ["status"])
-		.index("by_next_retry", ["nextRetry"])
-		.index("by_expense_id", ["expenseId"]),
-	// Rate limit tracking (Phase 3)
-	rateLimitState: defineTable({
-		provider: v.string(), // API provider (e.g., "openrouter")
-		requestCount: v.number(), // Number of requests in current window
-		windowStart: v.number(), // Start of current time window
-		lastReset: v.number(), // Last time counter was reset
-		lastRequest: v.optional(v.number()), // Timestamp of last request
-	}).index("by_provider", ["provider"]),
 })
