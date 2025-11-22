@@ -8,7 +8,8 @@ export default defineSchema({
 		amount: v.number(),
 		date: v.string(), // YYYY-MM-DD format
 		checked: v.boolean(),
-		split: v.optional(v.boolean()), // Whether expense is split (50/50) or not (100%), defaults to true
+		split: v.optional(v.boolean()), // DEPRECATED: Use assignedTo instead. Kept for backward compatibility during migration
+		assignedTo: v.optional(v.union(v.literal("me"), v.literal("split"), v.literal("other"))), // Who pays: "me" (100%), "split" (50/50), "other" (0% mine, 100% theirs)
 		year: v.number(),
 		month: v.string(), // 2-digit format: "01", "02", etc.
 		uploadTimestamp: v.optional(v.number()), // When expense was added (for unseen tracking)

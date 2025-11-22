@@ -2,6 +2,30 @@ import { action, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { api, internal } from "./_generated/api"
 
+// Helper function to get assignedTo value with backward compatibility
+function getAssignedTo(expense: { assignedTo?: "me" | "split" | "other"; split?: boolean }): "me" | "split" | "other" {
+	// If assignedTo is set, use it
+	if (expense.assignedTo) {
+		return expense.assignedTo
+	}
+	// Otherwise, fall back to split field for backward compatibility
+	// split=true → "split", split=false → "me", undefined → "split" (default)
+	const splitValue = expense.split ?? true
+	return splitValue ? "split" : "me"
+}
+
+// Helper function to calculate your share of an expense
+function calculateYourShare(amount: number, assignedTo: "me" | "split" | "other"): number {
+	switch (assignedTo) {
+		case "me":
+			return amount // 100% yours
+		case "split":
+			return amount / 2 // 50/50 split
+		case "other":
+			return 0 // 0% yours, 100% theirs
+	}
+}
+
 // Get all years that have expenses
 export const getYears = query({
 	args: {},
@@ -41,6 +65,35 @@ export const migrateSplitFromChecked = mutation({
 
 		return {
 			message: `Migrated ${migrated} expenses`,
+			total: expenses.length,
+			alreadyMigrated: expenses.length - migrated,
+		}
+	},
+})
+
+// Migration: Convert split boolean to assignedTo field
+// split=true → "split", split=false → "me"
+export const migrateToAssignedTo = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const expenses = await ctx.db.query("expenses").collect()
+		let migrated = 0
+
+		for (const expense of expenses) {
+			// Only migrate if assignedTo is not set
+			if (expense.assignedTo === undefined) {
+				const splitValue = expense.split ?? true // Default to split if not set
+				const assignedTo = splitValue ? "split" : "me"
+
+				await ctx.db.patch(expense._id, {
+					assignedTo,
+				})
+				migrated++
+			}
+		}
+
+		return {
+			message: `Migrated ${migrated} expenses to assignedTo field`,
 			total: expenses.length,
 			alreadyMigrated: expenses.length - migrated,
 		}
@@ -212,7 +265,7 @@ export const toggleAllExpenses = mutation({
 	},
 })
 
-// Toggle expense split status
+// Toggle expense split status (DEPRECATED - use toggleAssignedTo instead)
 export const toggleSplit = mutation({
 	args: {
 		expenseId: v.string(),
@@ -243,6 +296,50 @@ export const toggleSplit = mutation({
 	},
 })
 
+// Toggle expense assignedTo status (cycles through: me → split → other → me)
+export const toggleAssignedTo = mutation({
+	args: {
+		expenseId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const expense = await ctx.db
+			.query("expenses")
+			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
+			.first()
+
+		if (!expense) {
+			throw new Error("Expense not found")
+		}
+
+		// Get current assignedTo value
+		const current = getAssignedTo(expense)
+
+		// Cycle to next value: me → split → other → me
+		let newAssignedTo: "me" | "split" | "other"
+		switch (current) {
+			case "me":
+				newAssignedTo = "split"
+				break
+			case "split":
+				newAssignedTo = "other"
+				break
+			case "other":
+				newAssignedTo = "me"
+				break
+		}
+
+		await ctx.db.patch(expense._id, {
+			assignedTo: newAssignedTo,
+		})
+
+		return {
+			expenseId: args.expenseId,
+			newAssignedTo,
+			result: "success" as const,
+		}
+	},
+})
+
 // Add new expenses (with deduplication)
 export const addExpenses = mutation({
 	args: {
@@ -255,7 +352,8 @@ export const addExpenses = mutation({
 				year: v.number(),
 				month: v.string(),
 				checked: v.optional(v.boolean()), // Optional, for CSV imports that are pre-verified
-				split: v.optional(v.boolean()), // Optional, whether expense is split (50/50) or not (100%)
+				split: v.optional(v.boolean()), // DEPRECATED: Use assignedTo instead
+				assignedTo: v.optional(v.union(v.literal("me"), v.literal("split"), v.literal("other"))), // Optional, who pays
 				category: v.optional(v.string()), // Optional category
 				merchantName: v.optional(v.string()), // Optional normalized merchant name
 			}),
@@ -273,10 +371,17 @@ export const addExpenses = mutation({
 				.first()
 
 			if (!existing) {
+				// Determine assignedTo value (prefer assignedTo, fall back to split for backward compat)
+				let assignedTo: "me" | "split" | "other" = expense.assignedTo ?? "split" // Default to split
+				if (!expense.assignedTo && expense.split !== undefined) {
+					// Backward compatibility: convert split boolean to assignedTo
+					assignedTo = expense.split ? "split" : "me"
+				}
+
 				await ctx.db.insert("expenses", {
 					...expense,
 					checked: expense.checked ?? false, // Use provided value or default to false
-					split: expense.split ?? false, // Use provided value or default to individual (100%)
+					assignedTo, // Use determined assignedTo value
 					uploadTimestamp: Date.now(),
 					category: expense.category ?? undefined, // Default to undefined (uncategorized)
 					merchantName: expense.merchantName,
@@ -363,15 +468,17 @@ export const getYearSummary = query({
 			let totalMine = 0
 
 			for (const expense of monthExpenses) {
-				const isSplit = expense.split ?? false
-				if (isSplit) {
-					const share = expense.amount / 2
-					totalShared += share
-					totalPersonal += share
-				} else {
-					totalMine += expense.amount
-					totalPersonal += expense.amount
+				const assignedTo = getAssignedTo(expense)
+				const yourShare = calculateYourShare(expense.amount, assignedTo)
+
+				totalPersonal += yourShare
+
+				if (assignedTo === "split") {
+					totalShared += yourShare
+				} else if (assignedTo === "me") {
+					totalMine += yourShare
 				}
+				// "other" adds 0 to totals
 			}
 
 			// Check if there are unseen expenses
@@ -393,8 +500,9 @@ export const getYearSummary = query({
 				},
 				counts: {
 					all: monthExpenses.length,
-					mine: monthExpenses.filter((e) => !(e.split ?? false)).length,
-					shared: monthExpenses.filter((e) => e.split ?? false).length,
+					mine: monthExpenses.filter((e) => getAssignedTo(e) === "me").length,
+					shared: monthExpenses.filter((e) => getAssignedTo(e) === "split").length,
+					other: monthExpenses.filter((e) => getAssignedTo(e) === "other").length,
 				},
 				showGreenDot: hasUnseen,
 			}
@@ -409,8 +517,8 @@ export const getYearSummary = query({
 		// Calculate previous year total for comparison
 		let previousYearTotal = 0
 		for (const expense of previousYearExpenses) {
-			const isSplit = expense.split ?? false
-			previousYearTotal += isSplit ? expense.amount / 2 : expense.amount
+			const assignedTo = getAssignedTo(expense)
+			previousYearTotal += calculateYourShare(expense.amount, assignedTo)
 		}
 
 		let changeComparedToPreviousYear:
@@ -481,15 +589,17 @@ export const getMonthExpenses = query({
 		let totalMine = 0 // Your individual expenses (amount @ 100%)
 
 		for (const expense of sortedExpenses) {
-			const isSplit = expense.split ?? false
-			if (isSplit) {
-				const share = expense.amount / 2
-				totalShared += share
-				totalPersonal += share
-			} else {
-				totalMine += expense.amount
-				totalPersonal += expense.amount
+			const assignedTo = getAssignedTo(expense)
+			const yourShare = calculateYourShare(expense.amount, assignedTo)
+
+			totalPersonal += yourShare
+
+			if (assignedTo === "split") {
+				totalShared += yourShare
+			} else if (assignedTo === "me") {
+				totalMine += yourShare
 			}
+			// "other" adds 0 to totals
 		}
 
 		return {
@@ -503,8 +613,9 @@ export const getMonthExpenses = query({
 			},
 			counts: {
 				all: expenses.length,
-				mine: expenses.filter((e) => !(e.split ?? false)).length,
-				shared: expenses.filter((e) => e.split ?? false).length,
+				mine: expenses.filter((e) => getAssignedTo(e) === "me").length,
+				shared: expenses.filter((e) => getAssignedTo(e) === "split").length,
+				other: expenses.filter((e) => getAssignedTo(e) === "other").length,
 			},
 		}
 	},
@@ -530,9 +641,9 @@ export const getMonthlyTotals = query({
 				total: 0,
 			}
 
-			// Add to total, dividing by 2 for split expenses (default is split)
-			const isSplit = expense.split ?? false
-			const shareAmount = isSplit ? expense.amount / 2 : expense.amount
+			// Add to total based on assignedTo value
+			const assignedTo = getAssignedTo(expense)
+			const shareAmount = calculateYourShare(expense.amount, assignedTo)
 			existing.total += shareAmount
 
 			monthlyMap.set(key, existing)
@@ -1364,6 +1475,36 @@ export const bulkSetIndividual = mutation({
 	},
 })
 
+// Bulk set expenses to a specific assignedTo value
+export const bulkSetAssignedTo = mutation({
+	args: {
+		expenseIds: v.array(v.string()),
+		assignedTo: v.union(v.literal("me"), v.literal("split"), v.literal("other")),
+	},
+	handler: async (ctx, args) => {
+		let updatedCount = 0
+
+		for (const expenseId of args.expenseIds) {
+			const expense = await ctx.db
+				.query("expenses")
+				.withIndex("by_expense_id", (q) => q.eq("expenseId", expenseId))
+				.first()
+
+			if (expense) {
+				await ctx.db.patch(expense._id, {
+					assignedTo: args.assignedTo,
+				})
+				updatedCount++
+			}
+		}
+
+		return {
+			updatedCount,
+			result: "success" as const,
+		}
+	},
+})
+
 // Get recent expense uploads grouped by upload batch (for homepage feed)
 export const getRecentUploadBatches = query({
 	args: {
@@ -1431,15 +1572,17 @@ export const getRecentUploadBatches = query({
 			let totalMine = 0
 
 			for (const expense of batch.expenses) {
-				const isSplit = expense.split ?? false
-				if (isSplit) {
-					const share = expense.amount / 2
-					totalShared += share
-					totalPersonal += share
-				} else {
-					totalMine += expense.amount
-					totalPersonal += expense.amount
+				const assignedTo = getAssignedTo(expense)
+				const yourShare = calculateYourShare(expense.amount, assignedTo)
+
+				totalPersonal += yourShare
+
+				if (assignedTo === "split") {
+					totalShared += yourShare
+				} else if (assignedTo === "me") {
+					totalMine += yourShare
 				}
+				// "other" adds 0 to totals
 			}
 
 			// Get unique months in this batch
@@ -1468,8 +1611,9 @@ export const getRecentUploadBatches = query({
 				},
 				counts: {
 					all: batch.expenses.length,
-					mine: batch.expenses.filter((e) => !(e.split ?? false)).length,
-					shared: batch.expenses.filter((e) => e.split ?? false).length,
+					mine: batch.expenses.filter((e) => getAssignedTo(e) === "me").length,
+					shared: batch.expenses.filter((e) => getAssignedTo(e) === "split").length,
+					other: batch.expenses.filter((e) => getAssignedTo(e) === "other").length,
 				},
 				previewExpenses,
 			}
@@ -1553,15 +1697,17 @@ export const getExpensesFeed = query({
 			let totalMine = 0
 
 			for (const expense of sortedExpenses) {
-				const isSplit = expense.split ?? false
-				if (isSplit) {
-					const share = expense.amount / 2
-					totalShared += share
-					totalPersonal += share
-				} else {
-					totalMine += expense.amount
-					totalPersonal += expense.amount
+				const assignedTo = getAssignedTo(expense)
+				const yourShare = calculateYourShare(expense.amount, assignedTo)
+
+				totalPersonal += yourShare
+
+				if (assignedTo === "split") {
+					totalShared += yourShare
+				} else if (assignedTo === "me") {
+					totalMine += yourShare
 				}
+				// "other" adds 0 to totals
 			}
 
 			return {
@@ -1578,8 +1724,9 @@ export const getExpensesFeed = query({
 				},
 				counts: {
 					all: sortedExpenses.length,
-					mine: sortedExpenses.filter((e) => !(e.split ?? false)).length,
-					shared: sortedExpenses.filter((e) => e.split ?? false).length,
+					mine: sortedExpenses.filter((e) => getAssignedTo(e) === "me").length,
+					shared: sortedExpenses.filter((e) => getAssignedTo(e) === "split").length,
+					other: sortedExpenses.filter((e) => getAssignedTo(e) === "other").length,
 				},
 			}
 		})

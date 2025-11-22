@@ -1,4 +1,4 @@
-type TabType = "all" | "mine" | "shared";
+type TabType = "all" | "mine" | "shared" | "other";
 
 interface ExpenseTabsProps {
 	totals: {
@@ -10,6 +10,7 @@ interface ExpenseTabsProps {
 		all: number;
 		mine: number;
 		shared: number;
+		other?: number;
 	};
 	activeTab: TabType;
 	onTabChange: (tab: TabType) => void;
@@ -53,11 +54,19 @@ export function ExpenseTabs({
 			icon: "👥",
 			description: "50% of split expenses",
 		},
+		{
+			id: "other" as TabType,
+			label: "Theirs",
+			total: 0,
+			count: counts.other ?? 0,
+			icon: "🤝",
+			description: "0% (paid for others)",
+		},
 	];
 
 	return (
 		<div className="mb-6">
-			<div className="grid grid-cols-3 gap-3">
+			<div className="grid grid-cols-4 gap-3">
 				{tabs.map((tab) => (
 					<button
 						key={tab.id}
