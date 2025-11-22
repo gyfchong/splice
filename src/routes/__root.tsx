@@ -6,7 +6,6 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { CategorizationProgressBanner } from "../components/CategorizationProgressBanner";
 import Header from "../components/Header";
 import Navigation from "../components/Navigation";
 import { Toaster } from "../components/ui/toaster";
@@ -51,7 +50,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body>
 				<ConvexProvider>
-					<CategorizationProgressBanner />
 					<Header />
 					<div className="flex min-h-[calc(100vh-64px)]">
 						<Navigation />

@@ -1084,28 +1084,6 @@ export const addExpensesWithBackgroundCategorization = action({
 })
 
 /**
- * PHASE 3: Get job queue statistics
- * Exposes background categorization progress to the UI
- */
-export const getJobQueueStats = query({
-	args: {},
-	handler: async (ctx) => {
-		return await ctx.runQuery((internal as any).jobQueue.getJobStats, {})
-	},
-})
-
-/**
- * PHASE 3: Get rate limit status
- * Shows current rate limit state for monitoring
- */
-export const getRateLimitStatus = query({
-	args: {},
-	handler: async (ctx) => {
-		return await ctx.runQuery((internal as any).rateLimit.getAllRateLimitStatus, {})
-	},
-})
-
-/**
  * Add expenses with cache categorization and job queueing
  * This action:
  * 1. Saves ALL expenses to database first

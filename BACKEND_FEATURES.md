@@ -9,8 +9,6 @@ This document provides a comprehensive overview of all backend capabilities avai
 - [AI-Powered Categorization](#ai-powered-categorization)
 - [Merchant Normalization](#merchant-normalization)
 - [Heuristic Categorization](#heuristic-categorization)
-- [Rate Limiting](#rate-limiting)
-- [Background Job Queue](#background-job-queue)
 - [Upload Management](#upload-management)
 - [Custom Categories](#custom-categories)
 - [Admin & Monitoring](#admin--monitoring)
@@ -20,7 +18,7 @@ This document provides a comprehensive overview of all backend capabilities avai
 
 ## Database Schema
 
-The backend uses 7 database tables to manage expenses and categorization:
+The backend uses 5 database tables to manage expenses and categorization:
 
 ### 1. **expenses** Table
 Stores all expense transactions with categorization and split tracking.
@@ -87,39 +85,6 @@ User-created custom expense categories.
 
 **Indexes:**
 - `by_name` on `name`
-
-### 6. **categorizationJobs** Table
-Background job queue for AI categorization.
-
-**Fields:**
-- `expenseId` (string) - Expense to categorize
-- `merchantName` (string) - Normalized merchant name
-- `description` (string) - Expense description for AI context
-- `userId` (string, optional) - User ID for personal mappings
-- `status` (string) - "pending" | "processing" | "completed" | "failed"
-- `attempts` (number) - Number of attempts made
-- `lastAttempt` (number, optional) - Timestamp of last attempt
-- `nextRetry` (number, optional) - Timestamp when job can be retried
-- `error` (string, optional) - Error message if failed
-- `createdAt` (number) - Timestamp
-
-**Indexes:**
-- `by_status` on `status`
-- `by_next_retry` on `nextRetry`
-- `by_expense_id` on `expenseId`
-
-### 7. **rateLimitState** Table
-Rate limit tracking for API providers.
-
-**Fields:**
-- `provider` (string, indexed) - API provider (e.g., "openrouter")
-- `requestCount` (number) - Number of requests in current window
-- `windowStart` (number) - Start of current time window
-- `lastReset` (number) - Last time counter was reset
-- `lastRequest` (number, optional) - Timestamp of last request
-
-**Indexes:**
-- `by_provider` on `provider`
 
 ---
 
@@ -480,7 +445,6 @@ Sets multiple expenses as individual (100%).
   categorizedFromCache: number      // Merchants found in mappings
   categorizedFromHeuristics: number // Merchants categorized by keywords
   uncategorizedCount: number        // Merchants left uncategorized
-  queuedForAI: number              // Expenses queued for background AI
   totalMerchants: number
 }
 ```
@@ -508,7 +472,7 @@ Sets multiple expenses as individual (100%).
 #### `addExpensesWithCategories` (DEPRECATED)
 Legacy method that blocks uploads while calling AI for every merchant.
 
-**Status:** Deprecated in favor of background job queue approach
+**Status:** Deprecated in favor of cache-based categorization
 
 **Why Deprecated:**
 - Blocks upload while categorizing
@@ -977,240 +941,6 @@ Gets statistics about heuristic keyword coverage.
 
 ---
 
-## Rate Limiting
-
-The backend includes proactive rate limit tracking to prevent hitting API quotas.
-
-### Configuration
-
-**OpenRouter Limits:**
-- 15 requests per minute (safe limit, actual is 16)
-- 60-second sliding window
-
-### Core Functions
-
-#### `canMakeRequest` (Internal Mutation)
-Checks if request can be made without hitting rate limits.
-
-**Args:**
-- `provider` (string) - e.g., "openrouter"
-
-**Returns:** boolean
-
-**Logic:**
-- Creates rate limit state if doesn't exist
-- Checks if window has expired → resets
-- Returns true if under limit
-
----
-
-#### `recordRequest` (Internal Mutation)
-Records that an API request was made.
-
-**Args:**
-- `provider` (string)
-
-**Features:**
-- Creates state if doesn't exist
-- Resets window if expired
-- Increments request count
-- Updates lastRequest timestamp
-
-**Use Case:** Call AFTER making actual API request
-
----
-
-#### `getRateLimitStatus` (Internal Query)
-Gets current rate limit status for monitoring.
-
-**Args:**
-- `provider` (string)
-
-**Returns:**
-```typescript
-{
-  provider: string
-  requestCount: number      // Current requests in window
-  limit: number            // Max requests per window
-  windowMs: number         // Window duration
-  remaining: number        // Requests remaining
-  resetIn: number         // Milliseconds until reset
-  windowStart?: number    // When current window started
-  lastRequest?: number    // Last request timestamp
-}
-```
-
----
-
-#### `getAllRateLimitStatus` (Internal Query)
-Gets rate limit status for all providers.
-
-**Args:** None
-
-**Returns:** Array of status objects for all configured providers
-
----
-
-#### `resetRateLimit` (Internal Mutation)
-Manually resets rate limit state.
-
-**Args:**
-- `provider` (string)
-
-**Returns:**
-```typescript
-{
-  reset: boolean
-  message: string
-}
-```
-
-**Use Case:** Testing or recovery from errors
-
----
-
-#### `getRecommendedDelay` (Internal Query)
-Calculates recommended delay before next request.
-
-**Args:**
-- `provider` (string)
-
-**Returns:** Delay in milliseconds
-
-**Logic:**
-- No requests yet → 0ms delay
-- Window expired → 0ms delay
-- Close to limit → wait until window resets
-- Otherwise → ideal delay (60s / 15 = 4s for OpenRouter)
-
----
-
-## Background Job Queue
-
-Phase 3 feature for non-blocking AI categorization using job queue.
-
-### Core Functions
-
-#### `createJob` (Internal Mutation)
-Creates a new categorization job.
-
-**Args:**
-- `expenseId` (string)
-- `merchantName` (string)
-- `description` (string)
-- `userId` (string, optional)
-
-**Returns:** Job ID
-
-**Features:**
-- Checks for duplicate jobs before creating
-- Sets status to "pending"
-- Initializes attempt counter
-
----
-
-#### `getPendingJobs` (Internal Query)
-Gets jobs ready for processing.
-
-**Args:**
-- `maxJobs` (number) - Limit for rate limiting
-
-**Returns:** Array of pending and retryable jobs
-
-**Selection Logic:**
-- Pending jobs (never attempted) - FIFO order
-- Failed jobs ready for retry (nextRetry <= now)
-- Combined, limited to maxJobs
-
----
-
-#### `markJobAsProcessing` (Internal Mutation)
-Marks job as currently processing.
-
-**Args:**
-- `jobId` (ID)
-
-**Updates:**
-- `status` = "processing"
-- `lastAttempt` = now
-
----
-
-#### `markJobAsCompleted` (Internal Mutation)
-Marks job as successfully completed.
-
-**Args:**
-- `jobId` (ID)
-
-**Updates:**
-- `status` = "completed"
-- Increments `attempts`
-
----
-
-#### `markJobAsFailed` (Internal Mutation)
-Marks job as failed with exponential backoff.
-
-**Args:**
-- `jobId` (ID)
-- `error` (string)
-
-**Updates:**
-- `status` = "failed"
-- Increments `attempts`
-- Sets `error` message
-- Calculates `nextRetry` with exponential backoff
-
-**Backoff Schedule:**
-- Attempt 1: 1 minute
-- Attempt 2: 5 minutes
-- Attempt 3: 30 minutes
-- Attempt 4: 2 hours
-- Attempt 5: 12 hours
-- Attempt 6+: 24 hours
-
----
-
-#### `getJobStats` (Internal Query)
-Gets job queue statistics.
-
-**Args:** None
-
-**Returns:**
-```typescript
-{
-  total: number
-  pending: number
-  processing: number
-  completed: number
-  failed: number
-  retryable: number  // Failed jobs ready for retry
-}
-```
-
----
-
-#### `cleanupCompletedJobs` (Internal Mutation)
-Removes old completed jobs (>7 days).
-
-**Args:** None
-
-**Returns:** `{ deleted: number }`
-
----
-
-#### `getJobsByExpense` (Internal Query)
-Gets all jobs for a specific expense.
-
-**Args:**
-- `expenseId` (string)
-
-**Returns:** Array of jobs
-
-**Use Case:** Debugging
-
----
-
 ## Upload Management
 
 ### Queries
@@ -1307,19 +1037,6 @@ Gets comprehensive admin dashboard statistics.
     total: number
     percentage: number  // Categorization completion %
   }
-  jobQueue: {
-    total: number
-    pending: number
-    processing: number
-    completed: number
-    failed: number
-    retryable: number
-  }
-  rateLimit: {
-    available: number       // Requests remaining
-    limit: number          // Total limit
-    resetTime: number      // When limit resets
-  }
   recentActivity: Array<{
     merchantName: string
     category: string
@@ -1385,24 +1102,6 @@ Gets all uncategorized expenses grouped by merchant.
 
 ---
 
-#### `getJobQueueStats`
-Gets background job queue statistics.
-
-**Args:** None
-
-**Returns:** Job statistics (see Background Job Queue section)
-
----
-
-#### `getRateLimitStatus`
-Gets current rate limit status.
-
-**Args:** None
-
-**Returns:** Rate limit status for all providers
-
----
-
 ## Bulk Operations
 
 ### Expense Bulk Operations
@@ -1461,9 +1160,7 @@ All bulk operations return:
 
 1. **Run categorization during off-peak hours** - Respect rate limits
 2. **Use `runFullCategorizationWorkflow`** - Single button for optimization
-3. **Monitor job queue** - Check `getJobQueueStats` regularly
-4. **Clean up old jobs** - Run `cleanupCompletedJobs` periodically
-5. **Review uncategorized merchants** - Use `getUncategorizedExpensesByMerchant`
+3. **Review uncategorized merchants** - Use `getUncategorizedExpensesByMerchant`
 
 ### For Categorization
 
@@ -1497,9 +1194,6 @@ Ensure these indexes are used for optimal performance:
 - `merchantMappings.by_merchant` - Category lookups
 - `personalMappings.by_user_merchant` - User override lookups
 - `customCategories.by_name` - Duplicate prevention
-- `categorizationJobs.by_status` - Job queue queries
-- `categorizationJobs.by_expense_id` - Job tracking
-- `rateLimitState.by_provider` - Rate limit checks
 
 ### Optimization Tips
 
@@ -1507,7 +1201,6 @@ Ensure these indexes are used for optimal performance:
 2. **Use batch operations** - `toggleAllExpenses`, `bulkSetSplit`, etc.
 3. **Cache merchant mappings** - Check cache before AI
 4. **Respect rate limits** - Use delay between API calls
-5. **Background processing** - Use job queue for non-blocking operations
 
 ---
 
@@ -1541,14 +1234,13 @@ Ensure these indexes are used for optimal performance:
 
 ### Planned Features
 
-1. **Scheduled workers** - Automatic job queue processing
-2. **Smart split prediction** - ML-based split status inference
-3. **Category analytics** - Spending trends by category
-4. **Merchant search** - Find expenses by merchant
-5. **Export functionality** - CSV/PDF export of expenses
-6. **Budget tracking** - Category-based budgets and alerts
-7. **Receipt OCR** - Extract expenses from receipt photos
-8. **Multi-currency** - Support for international expenses
+1. **Smart split prediction** - ML-based split status inference
+2. **Category analytics** - Spending trends by category
+3. **Merchant search** - Find expenses by merchant
+4. **Export functionality** - CSV/PDF export of expenses
+5. **Budget tracking** - Category-based budgets and alerts
+6. **Receipt OCR** - Extract expenses from receipt photos
+7. **Multi-currency** - Support for international expenses
 
 ---
 
@@ -1557,9 +1249,7 @@ Ensure these indexes are used for optimal performance:
 **Current Version:** v1.0.0
 
 **Recent Changes:**
-- Added heuristic categorization (Phase 3)
-- Implemented background job queue (Phase 3)
-- Added rate limit tracking (Phase 3)
+- Added heuristic categorization
 - Split vs individual expense tracking
 - Custom category support
 - Three-tier categorization system
@@ -1577,9 +1267,8 @@ For more information, see:
 - `convex/schema.ts` - Database schema definitions
 - `convex/expenses.ts` - Expense management functions
 - `convex/categorization.ts` - AI categorization logic
-- `convex/heuristics.ts` - Keyword categorization
 - `convex/utils.ts` - Merchant normalization
 
 ---
 
-**Last Updated:** 2025-11-19
+**Last Updated:** 2025-11-22

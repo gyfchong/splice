@@ -13,16 +13,6 @@ interface AdminDashboardStats {
 		total: number;
 		percentage: number;
 	};
-	jobQueue: {
-		pending: number;
-		processing: number;
-		failed: number;
-	};
-	rateLimit: {
-		available: number;
-		limit: number;
-		resetTime: number;
-	};
 	recentActivity: Array<{
 		merchantName: string;
 		category: string;
@@ -191,24 +181,6 @@ function AdminDashboard({
 					subtitle={`${stats.expenses.total} total (${stats.expenses.percentage}% categorized)`}
 					icon="📊"
 					highlight={stats.expenses.uncategorized > 0}
-				/>
-				<StatCard
-					title="Job Queue"
-					value={stats.jobQueue.pending || 0}
-					subtitle={
-						stats.jobQueue.processing > 0
-							? `${stats.jobQueue.processing} processing`
-							: "pending jobs"
-					}
-					icon="⏳"
-					highlight={stats.jobQueue.failed > 0}
-				/>
-				<StatCard
-					title="Rate Limit"
-					value={`${stats.rateLimit.available}/${stats.rateLimit.limit}`}
-					subtitle="API calls available"
-					icon="🚦"
-					highlight={stats.rateLimit.available < 5}
 				/>
 			</div>
 

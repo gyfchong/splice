@@ -950,14 +950,6 @@ export const getAdminDashboardStats = query({
 			? Math.round(((totalCount - uncategorizedCount) / totalCount) * 100)
 			: 100
 
-		// Get job queue stats
-		const jobStats = await ctx.runQuery((internal as any).jobQueue.getJobStats)
-
-		// Get rate limit status for OpenRouter
-		const rateLimit = await ctx.runQuery((internal as any).rateLimit.getRateLimitStatus, {
-			provider: "openrouter",
-		})
-
 		// Get recent categorization activity (last 10)
 		const recentExpenses = await ctx.db
 			.query("expenses")
@@ -976,12 +968,6 @@ export const getAdminDashboardStats = query({
 				uncategorized: uncategorizedCount,
 				total: totalCount,
 				percentage,
-			},
-			jobQueue: jobStats,
-			rateLimit: {
-				available: rateLimit.requestsRemaining,
-				limit: rateLimit.requestsPerMinute,
-				resetTime: rateLimit.resetAt,
 			},
 			recentActivity,
 			needsAttention: uncategorizedCount > 0,
