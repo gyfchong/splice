@@ -1,5 +1,6 @@
+import { useAuth } from "@clerk/tanstack-start";
 import { ConvexQueryClient } from "@convex-dev/react-query";
-import { ConvexProvider } from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
 
 const CONVEX_URL =
 	(import.meta.env as { VITE_CONVEX_URL?: string }).VITE_CONVEX_URL ?? "";
@@ -14,8 +15,11 @@ export default function AppConvexProvider({
 	children: React.ReactNode;
 }) {
 	return (
-		<ConvexProvider client={convexQueryClient.convexClient}>
+		<ConvexProviderWithClerk
+			client={convexQueryClient.convexClient}
+			useAuth={useAuth}
+		>
 			{children}
-		</ConvexProvider>
+		</ConvexProviderWithClerk>
 	);
 }

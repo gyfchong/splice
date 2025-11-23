@@ -63,7 +63,7 @@ function YearPage() {
 		setCategorizeStatus(null);
 
 		try {
-			const result = await categorizeExpenses({ userId: "anonymous" });
+			const result = await categorizeExpenses({});
 
 			// Check if we hit rate limiting
 			if (result.rateLimitResetTime) {

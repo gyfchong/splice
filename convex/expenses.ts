@@ -2,11 +2,24 @@ import { action, internalMutation, mutation, query } from "./_generated/server"
 import { v } from "convex/values"
 import { api, internal } from "./_generated/api"
 
+// Helper to get authenticated user ID
+async function getAuthUserId(ctx: any) {
+	const identity = await ctx.auth.getUserIdentity()
+	if (!identity) {
+		throw new Error("Not authenticated")
+	}
+	return identity.subject // This is the Clerk user ID
+}
+
 // Get all years that have expenses
 export const getYears = query({
 	args: {},
 	handler: async (ctx) => {
-		const expenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		const expenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 		const years = [...new Set(expenses.map((e) => e.year))].sort((a, b) => b - a)
 		return years
 	},
@@ -16,7 +29,11 @@ export const getYears = query({
 export const getAllExpenses = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		return await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 	},
 })
 
@@ -55,6 +72,7 @@ export const getMerchantSplitPattern = query({
 		fromDate: v.string(), // YYYY-MM-DD format
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const { calculateCutoffDate } = await import("./utils")
 
 		// Calculate date N months ago
@@ -63,6 +81,7 @@ export const getMerchantSplitPattern = query({
 		// Get all expenses from this merchant in lookback period
 		const historicalExpenses = await ctx.db
 			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
 			.filter((q) =>
 				q.and(
 					q.eq(q.field("merchantName"), args.merchantName),
@@ -117,9 +136,10 @@ export const getMerchantSplitPattern = query({
 export const getExpensesByYear = query({
 	args: { year: v.number() },
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expenses = await ctx.db
 			.query("expenses")
-			.filter((q) => q.eq(q.field("year"), args.year))
+			.withIndex("by_user_year", (q) => q.eq("userId", userId).eq("year", args.year))
 			.collect()
 
 		// Group by month
@@ -163,6 +183,7 @@ export const toggleExpense = mutation({
 		expenseId: v.string(),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expense = await ctx.db
 			.query("expenses")
 			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
@@ -170,6 +191,10 @@ export const toggleExpense = mutation({
 
 		if (!expense) {
 			throw new Error("Expense not found")
+		}
+
+		if (expense.userId !== userId) {
+			throw new Error("Unauthorized")
 		}
 
 		await ctx.db.patch(expense._id, {
@@ -192,10 +217,12 @@ export const toggleAllExpenses = mutation({
 		checked: v.boolean(),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expenses = await ctx.db
 			.query("expenses")
-			.filter((q) => q.eq(q.field("year"), args.year))
-			.filter((q) => q.eq(q.field("month"), args.month))
+			.withIndex("by_user_year_month", (q) =>
+				q.eq("userId", userId).eq("year", args.year).eq("month", args.month),
+			)
 			.collect()
 
 		for (const expense of expenses) {
@@ -218,6 +245,7 @@ export const toggleSplit = mutation({
 		expenseId: v.string(),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expense = await ctx.db
 			.query("expenses")
 			.withIndex("by_expense_id", (q) => q.eq("expenseId", args.expenseId))
@@ -225,6 +253,10 @@ export const toggleSplit = mutation({
 
 		if (!expense) {
 			throw new Error("Expense not found")
+		}
+
+		if (expense.userId !== userId) {
+			throw new Error("Unauthorized")
 		}
 
 		// Default to false (individual) if undefined - most expenses are personal
@@ -262,6 +294,7 @@ export const addExpenses = mutation({
 		),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const newExpenseIds: string[] = []
 		const duplicateCount = { count: 0 }
 
@@ -274,6 +307,7 @@ export const addExpenses = mutation({
 
 			if (!existing) {
 				await ctx.db.insert("expenses", {
+					userId, // Add userId from auth
 					...expense,
 					checked: expense.checked ?? false, // Use provided value or default to false
 					split: expense.split ?? false, // Use provided value or default to individual (100%)
@@ -304,7 +338,9 @@ export const recordUpload = mutation({
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		return await ctx.db.insert("uploads", {
+			userId, // Add userId from auth
 			...args,
 			uploadDate: Date.now(),
 		})
@@ -315,7 +351,13 @@ export const recordUpload = mutation({
 export const getUploads = query({
 	args: {},
 	handler: async (ctx) => {
-		return await ctx.db.query("uploads").order("desc").take(50)
+		const userId = await getAuthUserId(ctx)
+		const allUploads = await ctx.db
+			.query("uploads")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.order("desc")
+			.collect()
+		return allUploads.slice(0, 50)
 	},
 })
 
@@ -326,15 +368,18 @@ export const getYearSummary = query({
 		sessionStartTime: v.optional(v.number()), // For tracking unseen expenses
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expenses = await ctx.db
 			.query("expenses")
-			.filter((q) => q.eq(q.field("year"), args.year))
+			.withIndex("by_user_year", (q) => q.eq("userId", userId).eq("year", args.year))
 			.collect()
 
 		// Get previous year data for comparison
 		const previousYearExpenses = await ctx.db
 			.query("expenses")
-			.filter((q) => q.eq(q.field("year"), args.year - 1))
+			.withIndex("by_user_year", (q) =>
+				q.eq("userId", userId).eq("year", args.year - 1),
+			)
 			.collect()
 
 		// Create all 12 months with data
@@ -466,10 +511,12 @@ export const getMonthExpenses = query({
 		month: v.string(), // 2-digit format: "01", "02", etc.
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const expenses = await ctx.db
 			.query("expenses")
-			.filter((q) => q.eq(q.field("year"), args.year))
-			.filter((q) => q.eq(q.field("month"), args.month))
+			.withIndex("by_user_year_month", (q) =>
+				q.eq("userId", userId).eq("year", args.year).eq("month", args.month),
+			)
 			.collect()
 
 		// Sort by date
@@ -514,7 +561,11 @@ export const getMonthExpenses = query({
 export const getMonthlyTotals = query({
 	args: {},
 	handler: async (ctx) => {
-		const expenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		const expenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 
 		// Group by year-month
 		const monthlyMap = new Map<
@@ -638,7 +689,6 @@ export const addExpensesWithCategories = action({
 				split: v.optional(v.boolean()), // Whether expense is split (50/50) or not (100%)
 			}),
 		),
-		userId: v.optional(v.string()),
 		delayMs: v.optional(v.number()), // Delay between AI calls (default: 4000ms)
 		enableRetry: v.optional(v.boolean()), // Enable exponential backoff retry (Phase 2)
 		maxRetries: v.optional(v.number()), // Max retry attempts (default: 3)
@@ -658,6 +708,7 @@ export const addExpensesWithCategories = action({
 		retriedMerchants: number
 		totalRetryAttempts: number
 	}> => {
+		await getAuthUserId(ctx) // Verify authentication
 		const { normalizeMerchant } = await import("./utils")
 		const delayMs = args.delayMs ?? 4000 // Default 4 seconds (15 req/min for 16/min limit)
 
@@ -736,7 +787,6 @@ export const addExpensesWithCategories = action({
 					{
 						merchantName,
 						description: expenses[0].name,
-						userId: args.userId,
 						enableRetry,
 						maxRetries,
 					},
@@ -875,7 +925,6 @@ export const addExpensesWithBackgroundCategorization = action({
 				split: v.optional(v.boolean()),
 			}),
 		),
-		userId: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -890,6 +939,7 @@ export const addExpensesWithBackgroundCategorization = action({
 		heuristicCategorizationCount: number
 		cacheCategorizationCount: number
 	}> => {
+		const userId = await getAuthUserId(ctx)
 		const { normalizeMerchant } = await import("./utils")
 		const { categorizeByHeuristics } = await import("./heuristics")
 
@@ -993,17 +1043,14 @@ export const addExpensesWithBackgroundCategorization = action({
 				let category: string | null = null
 				let source = ""
 
-				if (args.userId) {
-					const personal = await ctx.runQuery(api.categorization.getPersonalMapping, {
-						userId: args.userId,
-						merchantName,
-					})
-					if (personal) {
-						category = personal.category
-						source = "personal"
-						cacheCategorizationCount++
-						console.log(`[Phase 3] ✓ Personal mapping for ${merchantName}: ${category}`)
-					}
+				const personal = await ctx.runQuery(api.categorization.getPersonalMapping, {
+					merchantName,
+				})
+				if (personal) {
+					category = personal.category
+					source = "personal"
+					cacheCategorizationCount++
+					console.log(`[Phase 3] ✓ Personal mapping for ${merchantName}: ${category}`)
 				}
 
 				// Check global mapping
@@ -1043,7 +1090,7 @@ export const addExpensesWithBackgroundCategorization = action({
 							expenseId: expense.expenseId,
 							category,
 							merchantName,
-							userId: args.userId,
+							userId,
 						})
 						categorizedCount++
 					}
@@ -1109,7 +1156,6 @@ export const addExpensesWithKnownCategories = action({
 				split: v.optional(v.boolean()),
 			}),
 		),
-		userId: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -1124,6 +1170,7 @@ export const addExpensesWithKnownCategories = action({
 		queuedForAI: number
 		totalMerchants: number
 	}> => {
+		await getAuthUserId(ctx) // Verify authentication
 		const { normalizeMerchant } = await import("./utils")
 		const { categorizeByHeuristics } = await import("./heuristics")
 
@@ -1181,17 +1228,14 @@ export const addExpensesWithKnownCategories = action({
 			let source = ""
 
 			// Check personal mapping first
-			if (args.userId) {
-				const personal = await ctx.runQuery(api.categorization.getPersonalMapping, {
-					userId: args.userId,
-					merchantName,
-				})
-				if (personal) {
-					category = personal.category
-					source = "personal"
-					categorizedFromCache++
-					console.log(`[addExpensesWithKnownCategories] ✓ Personal mapping: ${merchantName} → ${category}`)
-				}
+			const personal = await ctx.runQuery(api.categorization.getPersonalMapping, {
+				merchantName,
+			})
+			if (personal) {
+				category = personal.category
+				source = "personal"
+				categorizedFromCache++
+				console.log(`[addExpensesWithKnownCategories] ✓ Personal mapping: ${merchantName} → ${category}`)
 			}
 
 			// Check global mapping
@@ -1266,7 +1310,11 @@ export const addExpensesWithKnownCategories = action({
 export const deleteAllExpenses = mutation({
 	args: {},
 	handler: async (ctx) => {
-		const expenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		const expenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 
 		for (const expense of expenses) {
 			await ctx.db.delete(expense._id)
@@ -1285,6 +1333,7 @@ export const bulkDeleteExpenses = mutation({
 		expenseIds: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		let deletedCount = 0
 
 		for (const expenseId of args.expenseIds) {
@@ -1294,6 +1343,9 @@ export const bulkDeleteExpenses = mutation({
 				.first()
 
 			if (expense) {
+				if (expense.userId !== userId) {
+					throw new Error("Unauthorized")
+				}
 				await ctx.db.delete(expense._id)
 				deletedCount++
 			}
@@ -1312,6 +1364,7 @@ export const bulkSetSplit = mutation({
 		expenseIds: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		let updatedCount = 0
 
 		for (const expenseId of args.expenseIds) {
@@ -1321,6 +1374,9 @@ export const bulkSetSplit = mutation({
 				.first()
 
 			if (expense) {
+				if (expense.userId !== userId) {
+					throw new Error("Unauthorized")
+				}
 				await ctx.db.patch(expense._id, {
 					split: true,
 				})
@@ -1341,6 +1397,7 @@ export const bulkSetIndividual = mutation({
 		expenseIds: v.array(v.string()),
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		let updatedCount = 0
 
 		for (const expenseId of args.expenseIds) {
@@ -1350,6 +1407,9 @@ export const bulkSetIndividual = mutation({
 				.first()
 
 			if (expense) {
+				if (expense.userId !== userId) {
+					throw new Error("Unauthorized")
+				}
 				await ctx.db.patch(expense._id, {
 					split: false,
 				})
@@ -1370,11 +1430,13 @@ export const getRecentUploadBatches = query({
 		limit: v.optional(v.number()), // Number of batches to return (default: 10)
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const limit = args.limit ?? 10
 
 		// Get all expenses with uploadTimestamp, sorted by newest first
 		const allExpenses = await ctx.db
 			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
 			.filter((q) => q.neq(q.field("uploadTimestamp"), undefined))
 			.collect()
 
@@ -1485,10 +1547,14 @@ export const getExpensesFeed = query({
 		limit: v.optional(v.number()), // Number of months to return (default: 6)
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		const limit = args.limit ?? 6
 
 		// Get all expenses
-		const allExpenses = await ctx.db.query("expenses").collect()
+		const allExpenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 
 		// Group expenses by year-month
 		const monthGroups = new Map<
@@ -1592,8 +1658,12 @@ export const getExpensesFeed = query({
 export const getMonthsGroupedByYear = query({
 	args: {},
 	handler: async (ctx) => {
+		const userId = await getAuthUserId(ctx)
 		// Get all expenses
-		const allExpenses = await ctx.db.query("expenses").collect()
+		const allExpenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 
 		// Group by year and month using plain objects and arrays
 		const yearMonthObj: Record<number, string[]> = {}

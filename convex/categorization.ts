@@ -19,6 +19,17 @@ const CATEGORIES = [
 ]
 
 /**
+ * Helper to get authenticated user ID from Clerk
+ */
+async function getAuthUserId(ctx: any) {
+	const identity = await ctx.auth.getUserIdentity()
+	if (!identity) {
+		throw new Error("Not authenticated")
+	}
+	return identity.subject // This is the Clerk user ID
+}
+
+/**
  * Categorizes a merchant using OpenRouter + Groq
  * This is an action because it makes external API calls
  *
@@ -267,10 +278,10 @@ export const getGlobalMapping = query({
  */
 export const getPersonalMapping = query({
 	args: {
-		userId: v.string(),
 		merchantName: v.string(),
 	},
-	handler: async (ctx, { userId, merchantName }) => {
+	handler: async (ctx, { merchantName }) => {
+		const userId = await getAuthUserId(ctx)
 		return await ctx.db
 			.query("personalMappings")
 			.withIndex("by_user_merchant", (q) =>
@@ -461,25 +472,23 @@ export const getCategoryForMerchant = action({
 	args: {
 		merchantName: v.string(),
 		description: v.string(),
-		userId: v.optional(v.string()),
 		enableRetry: v.optional(v.boolean()), // Enable exponential backoff retry (Phase 2)
 		maxRetries: v.optional(v.number()), // Max retry attempts (default: 3)
 	},
-	handler: async (ctx, { merchantName, description, userId, enableRetry = false, maxRetries = 3 }): Promise<{
+	handler: async (ctx, { merchantName, description, enableRetry = false, maxRetries = 3 }): Promise<{
 		category: string
 		source: "personal" | "global" | "ai" | "ai-retry"
 		attempts?: number
 		retryDelays?: number[]
 	}> => {
+		await getAuthUserId(ctx) // Verify authentication
 		// 1. Check personal mapping first (highest priority)
-		if (userId) {
-			const personal = await ctx.runQuery(api.categorization.getPersonalMapping, { userId, merchantName })
-			if (personal) {
-				console.log(`[getCategoryForMerchant] ✓ Personal mapping found for ${merchantName}: ${personal.category}`)
-				return {
-					category: personal.category,
-					source: "personal",
-				}
+		const personal = await ctx.runQuery(api.categorization.getPersonalMapping, { merchantName })
+		if (personal) {
+			console.log(`[getCategoryForMerchant] ✓ Personal mapping found for ${merchantName}: ${personal.category}`)
+			return {
+				category: personal.category,
+				source: "personal",
 			}
 		}
 
@@ -562,7 +571,7 @@ export const getCategoryForMerchant = action({
  * Update expense category with user override
  * This handles the full flow:
  * 1. Update the expense
- * 2. Create/update personal mapping (if userId provided)
+ * 2. Create/update personal mapping
  * 3. Vote on global mapping
  */
 export const updateExpenseCategoryWithMapping = action({
@@ -570,10 +579,10 @@ export const updateExpenseCategoryWithMapping = action({
 		expenseId: v.string(),
 		merchantName: v.string(),
 		category: v.string(),
-		userId: v.optional(v.string()),
 		updateAllFromMerchant: v.optional(v.boolean()), // If true, create personal override
 	},
 	handler: async (ctx, args) => {
+		const userId = await getAuthUserId(ctx)
 		// 1. Update the expense category
 		await ctx.runMutation(internal.expenses.updateExpenseCategory, {
 			expenseId: args.expenseId,
@@ -581,9 +590,9 @@ export const updateExpenseCategoryWithMapping = action({
 		})
 
 		// 2. If user wants this to apply to all future transactions from this merchant
-		if (args.updateAllFromMerchant && args.userId) {
+		if (args.updateAllFromMerchant) {
 			await ctx.runMutation(internal.categorization.upsertPersonalMapping, {
-				userId: args.userId,
+				userId,
 				merchantName: args.merchantName,
 				category: args.category,
 			})
@@ -605,7 +614,6 @@ export const updateExpenseCategoryWithMapping = action({
  */
 export const categorizeExistingExpenses = action({
 	args: {
-		userId: v.optional(v.string()),
 		delayMs: v.optional(v.number()), // Delay between API calls to avoid rate limiting
 	},
 	handler: async (ctx, args): Promise<{
@@ -642,7 +650,6 @@ export const categorizeExistingExpenses = action({
 					{
 						merchantName,
 						description: expense.name,
-						userId: args.userId,
 						enableRetry: false, // Disable retry for backfill to avoid long delays
 					},
 				)
@@ -813,7 +820,11 @@ export const populateMerchantMappingsFromExpenses = internalAction({
 export const getAllCustomCategories = query({
 	args: {},
 	handler: async (ctx) => {
-		const customCategories = await ctx.db.query("customCategories").collect()
+		const userId = await getAuthUserId(ctx)
+		const customCategories = await ctx.db
+			.query("customCategories")
+			.filter((q) => q.eq(q.field("userId"), userId))
+			.collect()
 		return customCategories.map((cat) => cat.name)
 	},
 })
@@ -824,8 +835,12 @@ export const getAllCustomCategories = query({
 export const getUsedCategories = query({
 	args: {},
 	handler: async (ctx) => {
-		// Get all expenses
-		const expenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		// Get all expenses for this user
+		const expenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 
 		// Extract unique categories
 		const usedCategories = new Set<string>()
@@ -848,6 +863,7 @@ export const addCustomCategory = mutation({
 		name: v.string(),
 	},
 	handler: async (ctx, { name }) => {
+		const userId = await getAuthUserId(ctx)
 		// Trim and validate the name
 		const trimmedName = name.trim()
 		if (!trimmedName) {
@@ -874,6 +890,7 @@ export const addCustomCategory = mutation({
 
 		// Create the custom category
 		await ctx.db.insert("customCategories", {
+			userId,
 			name: trimmedName,
 			createdAt: Date.now(),
 		})
@@ -941,8 +958,12 @@ export const updateExpenseCategory = internalMutation({
 export const getAdminDashboardStats = query({
 	args: {},
 	handler: async (ctx) => {
-		// Count total and uncategorized expenses
-		const allExpenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		// Count total and uncategorized expenses for this user
+		const allExpenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 		const uncategorized = allExpenses.filter((e) => !e.category || e.category === null)
 		const totalCount = allExpenses.length
 		const uncategorizedCount = uncategorized.length
@@ -950,9 +971,10 @@ export const getAdminDashboardStats = query({
 			? Math.round(((totalCount - uncategorizedCount) / totalCount) * 100)
 			: 100
 
-		// Get recent categorization activity (last 10)
+		// Get recent categorization activity (last 10) for this user
 		const recentExpenses = await ctx.db
 			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
 			.filter((q) => q.neq(q.field("category"), undefined))
 			.order("desc")
 			.take(10)
@@ -984,8 +1006,10 @@ export const getUncategorizedFromUpload = query({
 		uploadTimestamp: v.number(),
 	},
 	handler: async (ctx, { uploadTimestamp }) => {
+		const userId = await getAuthUserId(ctx)
 		const uncategorized = await ctx.db
 			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
 			.filter((q) =>
 				q.and(
 					q.gte(q.field("uploadTimestamp"), uploadTimestamp),
@@ -1011,8 +1035,12 @@ export const getUncategorizedFromUpload = query({
 export const getUncategorizedExpensesByMerchant = query({
 	args: {},
 	handler: async (ctx) => {
-		// Get all uncategorized expenses
-		const allExpenses = await ctx.db.query("expenses").collect()
+		const userId = await getAuthUserId(ctx)
+		// Get all uncategorized expenses for this user
+		const allExpenses = await ctx.db
+			.query("expenses")
+			.withIndex("by_user", (q) => q.eq("userId", userId))
+			.collect()
 		const uncategorized = allExpenses.filter((e) => !e.category || e.category === null)
 
 		// Group by merchant

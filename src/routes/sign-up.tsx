@@ -1,4 +1,4 @@
-import { SignIn, SignedIn, SignedOut } from "@clerk/tanstack-start";
+import { SignUp, SignedIn, SignedOut } from "@clerk/tanstack-start";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getAuth } from "@clerk/tanstack-start/server";
@@ -15,12 +15,12 @@ const authCheck = createServerFn({ method: "GET" }).handler(async () => {
 	return { userId: null };
 });
 
-export const Route = createFileRoute("/")({
-	component: HomePage,
+export const Route = createFileRoute("/sign-up")({
+	component: SignUpPage,
 	beforeLoad: async () => await authCheck(),
 });
 
-function HomePage() {
+function SignUpPage() {
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 flex flex-col items-center justify-center py-12 px-6">
 			<div className="max-w-md w-full text-center mb-8">
@@ -29,17 +29,17 @@ function HomePage() {
 					<h1 className="text-5xl font-bold text-white">Luman</h1>
 				</div>
 				<p className="text-gray-400 text-lg">
-					Track your expenses with ease
+					Create your account to start tracking expenses
 				</p>
 			</div>
 
 			<SignedOut>
 				<div className="w-full max-w-md">
-					<SignIn
+					<SignUp
 						routing="path"
-						path="/"
-						signUpUrl="/sign-up"
-						afterSignInUrl="/dashboard"
+						path="/sign-up"
+						signInUrl="/"
+						afterSignUpUrl="/dashboard"
 					/>
 				</div>
 			</SignedOut>

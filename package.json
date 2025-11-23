@@ -13,6 +13,8 @@
     "deploy:ci": "npx convex deploy --cmd 'pnpm run build'"
   },
   "dependencies": {
+    "@clerk/backend": "^2.23.2",
+    "@clerk/tanstack-start": "^0.11.5",
     "@convex-dev/react-query": "0.0.0-alpha.11",
     "@netlify/vite-plugin-tanstack-start": "^1.1.12",
     "@radix-ui/react-label": "^2.1.8",
@@ -35,6 +37,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.29.1",
+    "convex-helpers": "^0.1.105",
     "lucide-react": "^0.553.0",
     "papaparse": "^5.5.3",
     "react": "^19.2.0",
