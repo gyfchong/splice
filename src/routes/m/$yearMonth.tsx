@@ -7,7 +7,6 @@ import { ExpenseListSkeleton } from "@/components/ExpenseListSkeleton";
 import { ExpenseTabs } from "@/components/ExpenseTabs";
 import { FloatingProgressBar } from "@/components/FloatingProgressBar";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { api } from "../../../convex/_generated/api";
 
 export const Route = createFileRoute("/m/$yearMonth")({
@@ -22,16 +21,15 @@ function MonthPage() {
 		year: yearNum,
 		month,
 	});
-	const toggleSplit = useMutation(api.expenses.toggleSplit);
+	const toggleAssignedTo = useMutation(api.expenses.toggleAssignedTo);
 	const bulkDeleteExpenses = useMutation(api.expenses.bulkDeleteExpenses);
-	const bulkSetSplit = useMutation(api.expenses.bulkSetSplit);
-	const bulkSetIndividual = useMutation(api.expenses.bulkSetIndividual);
+	const bulkSetAssignedTo = useMutation(api.expenses.bulkSetAssignedTo);
 	const updateCategoryWithMapping = useAction(
 		api.categorization.updateExpenseCategoryWithMapping,
 	);
 
 	// Tab state
-	const [activeTab, setActiveTab] = useState<"all" | "mine" | "shared">("all");
+	const [activeTab, setActiveTab] = useState<"all" | "mine" | "shared" | "other">("all");
 
 	// Track which expense is being updated
 	const [updatingExpenseId, setUpdatingExpenseId] = useState<string | null>(
@@ -59,11 +57,11 @@ function MonthPage() {
 		localStorage.setItem("lastVisitedPage", `/m/${yearMonth}`);
 	}, [year, month, yearMonth]);
 
-	const handleToggleSplit = async (expenseId: string) => {
+	const handleToggleAssignedTo = async (expenseId: string) => {
 		try {
-			await toggleSplit({ expenseId });
+			await toggleAssignedTo({ expenseId });
 		} catch (error) {
-			console.error("Failed to toggle split:", error);
+			console.error("Failed to toggle assignedTo:", error);
 		}
 	};
 
@@ -87,15 +85,27 @@ function MonthPage() {
 		}
 	};
 
+	// Helper function to get assignedTo with backward compatibility
+	const getAssignedTo = (expense: { assignedTo?: "me" | "split" | "other"; split?: boolean }): "me" | "split" | "other" => {
+		if (expense.assignedTo) {
+			return expense.assignedTo;
+		}
+		// Fall back to split field for backward compatibility
+		const splitValue = expense.split ?? true;
+		return splitValue ? "split" : "me";
+	};
+
 	// Filter expenses based on active tab
 	const filteredExpenses = useMemo(() => {
 		if (!data) return [];
 
 		switch (activeTab) {
 			case "mine":
-				return data.expenses.filter((e) => !(e.split ?? false));
+				return data.expenses.filter((e) => getAssignedTo(e) === "me");
 			case "shared":
-				return data.expenses.filter((e) => e.split ?? false);
+				return data.expenses.filter((e) => getAssignedTo(e) === "split");
+			case "other":
+				return data.expenses.filter((e) => getAssignedTo(e) === "other");
 			default:
 				return data.expenses;
 		}
@@ -147,29 +157,15 @@ function MonthPage() {
 		}
 	};
 
-	const handleBulkSetSplit = async () => {
+	const handleBulkSetAssignedToValue = async (assignedTo: "me" | "split" | "other") => {
 		if (selectedExpenses.size === 0) return;
 
 		setIsProcessingBulk(true);
 		try {
-			await bulkSetSplit({ expenseIds: Array.from(selectedExpenses) });
+			await bulkSetAssignedTo({ expenseIds: Array.from(selectedExpenses), assignedTo });
 			setSelectedExpenses(new Set());
 		} catch (error) {
-			console.error("Failed to set expenses as split:", error);
-		} finally {
-			setIsProcessingBulk(false);
-		}
-	};
-
-	const handleBulkSetIndividual = async () => {
-		if (selectedExpenses.size === 0) return;
-
-		setIsProcessingBulk(true);
-		try {
-			await bulkSetIndividual({ expenseIds: Array.from(selectedExpenses) });
-			setSelectedExpenses(new Set());
-		} catch (error) {
-			console.error("Failed to set expenses as individual:", error);
+			console.error(`Failed to set expenses as ${assignedTo}:`, error);
 		} finally {
 			setIsProcessingBulk(false);
 		}
@@ -262,20 +258,28 @@ function MonthPage() {
 									</div>
 									<div className="flex gap-2">
 										<Button
-											onClick={handleBulkSetSplit}
-											disabled={isProcessingBulk}
-											className="bg-cyan-600 hover:bg-cyan-700 text-white"
-											size="sm"
-										>
-											Split All (50%)
-										</Button>
-										<Button
-											onClick={handleBulkSetIndividual}
+											onClick={() => handleBulkSetAssignedToValue("me")}
 											disabled={isProcessingBulk}
 											className="bg-purple-600 hover:bg-purple-700 text-white"
 											size="sm"
 										>
-											Individual All (100%)
+											Mine (100%)
+										</Button>
+										<Button
+											onClick={() => handleBulkSetAssignedToValue("split")}
+											disabled={isProcessingBulk}
+											className="bg-cyan-600 hover:bg-cyan-700 text-white"
+											size="sm"
+										>
+											Split (50%)
+										</Button>
+										<Button
+											onClick={() => handleBulkSetAssignedToValue("other")}
+											disabled={isProcessingBulk}
+											className="bg-orange-600 hover:bg-orange-700 text-white"
+											size="sm"
+										>
+											Theirs (0%)
 										</Button>
 										<Button
 											onClick={handleBulkDelete}
@@ -284,7 +288,7 @@ function MonthPage() {
 											size="sm"
 										>
 											<Trash2 className="w-4 h-4 mr-2" />
-											Delete All
+											Delete
 										</Button>
 									</div>
 								</div>
@@ -294,7 +298,7 @@ function MonthPage() {
 						{/* Expenses List */}
 						{filteredExpenses.length === 0 ? (
 							<div className="text-center py-8 text-gray-400">
-								No {activeTab === "mine" ? "individual" : "shared"} expenses
+								No {activeTab === "mine" ? "individual" : activeTab === "shared" ? "shared" : activeTab === "other" ? "expenses for others" : ""} expenses
 								this month
 							</div>
 						) : (
@@ -317,10 +321,40 @@ function MonthPage() {
 
 								{/* Expense Items */}
 								{filteredExpenses.map((expense) => {
-									const isSplit = expense.split ?? false;
-									const yourShare = isSplit
-										? expense.amount / 2
-										: expense.amount;
+									const assignedTo = getAssignedTo(expense);
+									let yourShare = 0;
+									switch (assignedTo) {
+										case "me":
+											yourShare = expense.amount;
+											break;
+										case "split":
+											yourShare = expense.amount / 2;
+											break;
+										case "other":
+											yourShare = 0;
+											break;
+									}
+
+									// Button styles and labels for each state
+									const assignedToConfig = {
+										me: {
+											label: "Mine",
+											bgClass: "bg-purple-600/20 border-purple-500/50 text-purple-300",
+											hoverClass: "hover:bg-purple-600/30",
+										},
+										split: {
+											label: "Split",
+											bgClass: "bg-cyan-600/20 border-cyan-500/50 text-cyan-300",
+											hoverClass: "hover:bg-cyan-600/30",
+										},
+										other: {
+											label: "Theirs",
+											bgClass: "bg-orange-600/20 border-orange-500/50 text-orange-300",
+											hoverClass: "hover:bg-orange-600/30",
+										},
+									};
+
+									const config = assignedToConfig[assignedTo];
 
 									return (
 										<div
@@ -331,7 +365,7 @@ function MonthPage() {
 													: "bg-slate-700/30 border-slate-600/30 hover:bg-slate-700/50"
 											}`}
 										>
-											{/* Main row: checkbox, name, amount, split toggle */}
+											{/* Main row: checkbox, name, amount, assignedTo button */}
 											<div className="flex items-center gap-4 mb-3">
 												{/* Checkbox */}
 												<input
@@ -356,24 +390,17 @@ function MonthPage() {
 														{formatCurrency(expense.amount)}
 													</div>
 													<div className="text-xs text-gray-400">
-														{formatCurrency(yourShare)}
+														You: {formatCurrency(yourShare)}
 													</div>
 												</div>
-												<div className="flex items-center gap-2 shrink-0">
-													<span className="text-xs text-gray-400">Split</span>
-													<Switch
-														checked={isSplit}
-														onCheckedChange={() =>
-															handleToggleSplit(expense.expenseId)
-														}
-														className="data-[state=checked]:bg-slate-500 data-[state=unchecked]:bg-slate-500"
-														title={
-															isSplit
-																? "Split 50/50 - Toggle for 100%"
-																: "100% - Toggle for 50/50 split"
-														}
-													/>
-												</div>
+												<button
+													type="button"
+													onClick={() => handleToggleAssignedTo(expense.expenseId)}
+													className={`shrink-0 px-3 py-2 rounded-lg border transition-all ${config.bgClass} ${config.hoverClass} font-medium text-sm`}
+													title="Click to cycle: Mine → Split → Theirs"
+												>
+													{config.label}
+												</button>
 											</div>
 
 											{/* Category row (indented to align with content) */}
@@ -396,15 +423,6 @@ function MonthPage() {
 													</span>
 												)}
 											</div>
-
-											{/* Shared tag at bottom */}
-											{isSplit && (
-												<div className="ml-9">
-													<span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-600 text-slate-300 rounded">
-														Shared
-													</span>
-												</div>
-											)}
 										</div>
 									);
 								})}
