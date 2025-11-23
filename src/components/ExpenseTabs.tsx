@@ -5,6 +5,7 @@ interface ExpenseTabsProps {
 		all: number;
 		mine: number;
 		shared: number;
+		other?: number;
 	};
 	counts: {
 		all: number;
@@ -57,7 +58,7 @@ export function ExpenseTabs({
 		{
 			id: "other" as TabType,
 			label: "Theirs",
-			total: 0,
+			total: totals.other ?? 0,
 			count: counts.other ?? 0,
 			icon: "🤝",
 			description: "0% (paid for others)",

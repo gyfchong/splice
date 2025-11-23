@@ -466,6 +466,7 @@ export const getYearSummary = query({
 			let totalPersonal = 0
 			let totalShared = 0
 			let totalMine = 0
+			let totalOther = 0
 
 			for (const expense of monthExpenses) {
 				const assignedTo = getAssignedTo(expense)
@@ -477,8 +478,9 @@ export const getYearSummary = query({
 					totalShared += yourShare
 				} else if (assignedTo === "me") {
 					totalMine += yourShare
+				} else if (assignedTo === "other") {
+					totalOther += expense.amount // Full amount for "other" expenses
 				}
-				// "other" adds 0 to totals
 			}
 
 			// Check if there are unseen expenses
@@ -497,6 +499,7 @@ export const getYearSummary = query({
 					all: Math.round(totalPersonal * 100) / 100,
 					mine: Math.round(totalMine * 100) / 100,
 					shared: Math.round(totalShared * 100) / 100,
+					other: Math.round(totalOther * 100) / 100,
 				},
 				counts: {
 					all: monthExpenses.length,
@@ -583,10 +586,11 @@ export const getMonthExpenses = query({
 		// Sort by date
 		const sortedExpenses = expenses.sort((a, b) => a.date.localeCompare(b.date))
 
-		// Calculate all three totals
+		// Calculate all totals
 		let totalPersonal = 0 // Your total spending (shared + mine)
 		let totalShared = 0 // Your share of split expenses (amount / 2)
 		let totalMine = 0 // Your individual expenses (amount @ 100%)
+		let totalOther = 0 // Expenses paid for others (full amount)
 
 		for (const expense of sortedExpenses) {
 			const assignedTo = getAssignedTo(expense)
@@ -598,8 +602,9 @@ export const getMonthExpenses = query({
 				totalShared += yourShare
 			} else if (assignedTo === "me") {
 				totalMine += yourShare
+			} else if (assignedTo === "other") {
+				totalOther += expense.amount // Full amount for "other" expenses
 			}
-			// "other" adds 0 to totals
 		}
 
 		return {
@@ -610,6 +615,7 @@ export const getMonthExpenses = query({
 				all: Math.round(totalPersonal * 100) / 100, // Total personal spending
 				mine: Math.round(totalMine * 100) / 100, // 100% expenses only
 				shared: Math.round(totalShared * 100) / 100, // 50% of split expenses
+				other: Math.round(totalOther * 100) / 100, // Expenses paid for others
 			},
 			counts: {
 				all: expenses.length,
